@@ -5,7 +5,8 @@
   "description": "ระบบบันทึกการเข้าใช้ห้องพยาบาลโรงเรียน (Google Apps Script + Google Sheets)",
   "scripts": {
     "test": "node --test tests/*.test.js",
-    "dev": "node dev/server.js"
+    "dev": "node dev/server.js",
+    "demo": "node dev/build-demo.js"
   },
   "devDependencies": {
     "html2pdf.js": "^0.10.1",

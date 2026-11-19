@@ -2,3 +2,4 @@ node_modules/
 screenshots/
 .clasp.json
 *.log
+demo/
