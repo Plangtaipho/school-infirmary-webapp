@@ -235,6 +235,18 @@
   @keyframes spin { to { transform: rotate(360deg); } }
   .boot { text-align: center; padding: 64px 16px; color: var(--muted); }
 
+  /* ---------- PDF: วาดรายงานในกรอบ A4 นอกจอ แล้วให้ html2pdf ถ่ายภาพ ---------- */
+  .pdf-holder { position: absolute; left: -12000px; top: 0; width: 718px; background: #fff; }
+  .pdf-sheet { width: 718px; background: #fff; font-size: 14px; color: #111; }
+  .pdf-sheet .bar-row { grid-template-columns: 130px 1fr 36px; }
+  .pdf-sheet table { font-size: 12.5px; }
+  .pdf-sheet .print-only { display: block; }
+  .pdf-sheet .no-print { display: none !important; }
+  .pdf-sheet .card, .pdf-sheet .stat { box-shadow: none; border: 1px solid #cfd8d6; }
+  .pdf-sheet .stats { grid-template-columns: repeat(4, 1fr); }
+  .pdf-sheet .report-grid { grid-template-columns: 1fr 1fr; }
+  .pdf-sheet .table-wrap { overflow: visible; }
+
   /* ---------- พิมพ์รายงาน ---------- */
   @media print {
     @page { size: A4; margin: 14mm; }

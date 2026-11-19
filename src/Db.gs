@@ -17,12 +17,24 @@ function getSheet_(name) {
     if (TEXT_SHEETS.indexOf(name) !== -1) {
       sheet.getRange(1, 1, sheet.getMaxRows(), cols.length).setNumberFormat('@');
     }
-    sheet.getRange(1, 1, 1, cols.length).setValues([cols]).setFontWeight('bold');
-    sheet.setFrozenRows(1);
+    sheet.getRange(1, 1, 1, cols.length).setValues([cols]);
+    formatSheet_(sheet, name);
     return sheet;
   }
   ensureColumns_(sheet, cols);
   return sheet;
+}
+
+/** จัดรูปแบบแท็บ: หัวตารางสีเข้ม ตรึงแถวแรก คำอธิบายภาษาไทย สีแท็บ ความกว้างคอลัมน์ */
+function formatSheet_(sheet, name) {
+  var cols = COLUMNS[name];
+  var style = SHEET_STYLE[name] || { widths: {} };
+  var header = sheet.getRange(1, 1, 1, cols.length);
+  header.setFontWeight('bold').setFontColor('#ffffff').setBackground(style.tab || '#0f7b6c');
+  header.setNotes([cols.map(function (c) { return HEADER_NOTES[c] || ''; })]);
+  sheet.setFrozenRows(1);
+  if (style.tab) sheet.setTabColor(style.tab);
+  cols.forEach(function (c, i) { sheet.setColumnWidth(i + 1, style.widths[c] || 100); });
 }
 
 /** migration แบบง่าย: เติมคอลัมน์ที่ยังไม่มีต่อท้ายหัวตาราง โดยไม่แตะข้อมูลเดิม */
@@ -32,7 +44,9 @@ function ensureColumns_(sheet, cols) {
   var missing = cols.filter(function (c) { return header.indexOf(c) === -1; });
   if (missing.length === 0) return;
   var start = header.filter(function (h) { return h !== ''; }).length + 1;
-  sheet.getRange(1, start, 1, missing.length).setValues([missing]).setFontWeight('bold');
+  sheet.getRange(1, start, 1, missing.length).setValues([missing])
+    .setFontWeight('bold').setFontColor('#ffffff').setBackground('#0f7b6c')
+    .setNotes([missing.map(function (c) { return HEADER_NOTES[c] || ''; })]);
 }
 
 /** อ่านทั้งชีตเป็น array ของ object (ค่าทุกช่องเป็นข้อความตามที่แสดงในชีต) */

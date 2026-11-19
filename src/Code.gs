@@ -26,6 +26,7 @@ function onOpen() {
   SpreadsheetApp.getUi()
     .createMenu('ห้องพยาบาล')
     .addItem('ตั้งค่าชีตเริ่มต้น', 'setupSheets')
+    .addItem('จัดรูปแบบแท็บใหม่', 'formatAllSheets')
     .addToUi();
 }
 
@@ -50,6 +51,12 @@ function setupSheets() {
     }
     return true;
   });
+}
+
+/** จัดรูปแบบทุกแท็บใหม่ (ไม่แตะข้อมูล) */
+function formatAllSheets() {
+  Object.keys(SHEETS).forEach(function (k) { formatSheet_(getSheet_(SHEETS[k]), SHEETS[k]); });
+  return true;
 }
 
 function setupIfNeeded_() {

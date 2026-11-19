@@ -35,6 +35,8 @@ test('setupSheets สร้างชีตครบและเติมตั�
   g.setupSheets();
   const names = g.__ss.getSheets().map(s => s.getName()).sort();
   assert.deepEqual(names, ['ErrorLog', 'Settings', 'Students', 'VisitMedicines', 'Visits']);
+  assert.equal(g.__ss.getSheetByName('Visits').notes[0][0], 'เลขที่รายการ');
+  assert.equal(g.formatAllSheets(), true);
   const b = g.apiBootstrap();
   assert.equal(b.ok, true);
   assert.equal(b.data.settings.symptom[0], 'ปวดศีรษะ');

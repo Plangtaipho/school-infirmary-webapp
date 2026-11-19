@@ -574,6 +574,7 @@ views.report = function () {
     h('div', { class: 'grid-2' }, field('ตั้งแต่วันที่', fromI), field('ถึงวันที่', toI)),
     h('div', { class: 'btn-row' },
       h('button', { type: 'button', class: 'btn primary', text: 'ดูรายงาน', onclick: run }),
+      h('button', { type: 'button', class: 'btn', text: 'ส่งออก PDF', onclick: exportReportPdf }),
       h('button', { type: 'button', class: 'btn', text: 'พิมพ์รายงาน', onclick: function () { window.print(); } }))));
   root.appendChild(out);
 
@@ -607,7 +608,50 @@ function table(headers, rows, numCols) {
 }
 function section(title, content) { return h('div', { class: 'card' }, h('h3', { style: 'margin-bottom:10px', text: title }), content); }
 
+/* ---------- ส่งออกรายงานเป็น PDF (สร้างในเบราว์เซอร์ ไม่ต้องขอสิทธิ์ Drive เพิ่ม) ---------- */
+var HTML2PDF_URL = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
+var html2pdfLoading = null;
+function loadHtml2pdf() {
+  if (window.html2pdf) return Promise.resolve(window.html2pdf);
+  if (html2pdfLoading) return html2pdfLoading;
+  html2pdfLoading = new Promise(function (resolve, reject) {
+    var s = document.createElement('script');
+    s.src = HTML2PDF_URL;
+    s.onload = function () { resolve(window.html2pdf); };
+    s.onerror = function () { html2pdfLoading = null; reject(new Error('โหลดตัวสร้าง PDF ไม่สำเร็จ กรุณาตรวจสอบอินเทอร์เน็ต')); };
+    document.head.appendChild(s);
+  });
+  return html2pdfLoading;
+}
+function exportReportPdf() {
+  var d = state.lastReport;
+  if (!d) { toast('กรุณากด "ดูรายงาน" ก่อน', true); return; }
+  setLoading(true);
+  loadHtml2pdf().then(function (html2pdf) {
+    // สร้างรายงานชุดใหม่ในกรอบกว้างคงที่ (A4) เพื่อให้ PDF หน้าตาเหมือนกันทุกอุปกรณ์
+    var sheet = h('div', { class: 'pdf-sheet' });
+    renderReport(sheet, d);
+    var holder = h('div', { class: 'pdf-holder', 'aria-hidden': 'true' }, sheet);
+    document.body.appendChild(holder);
+    return html2pdf().set({
+      margin: [10, 10, 12, 10],
+      filename: 'infirmary-report_' + d.from + '_' + d.to + '.pdf',
+      image: { type: 'jpeg', quality: 0.95 },
+      html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+      pagebreak: { mode: ['css', 'legacy'], avoid: ['.card', '.stat', 'tr'] }
+    }).from(sheet).save().then(function () {
+      document.body.removeChild(holder);
+    }, function (e) { document.body.removeChild(holder); throw e; });
+  }).then(function () {
+    setLoading(false); toast('ดาวน์โหลด PDF แล้ว');
+  }).catch(function (e) {
+    setLoading(false); toast(e.message || 'สร้าง PDF ไม่สำเร็จ', true);
+  });
+}
+
 function renderReport(out, d) {
+  state.lastReport = d;
   clear(out);
   out.appendChild(h('div', { class: 'print-only', style: 'text-align:center;margin-bottom:12px' },
     h('h2', { text: 'รายงานการใช้บริการห้องพยาบาล' }),

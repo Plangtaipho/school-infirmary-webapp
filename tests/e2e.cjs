@@ -11,6 +11,7 @@ const BASE = process.env.BASE || 'http://localhost:8080';
 const OUT = process.argv[2] || path.join(__dirname, '..', 'screenshots');
 fs.mkdirSync(OUT, { recursive: true });
 const XLSX_JS = fs.readFileSync(path.join(__dirname, '..', 'node_modules', 'xlsx', 'dist', 'xlsx.full.min.js'));
+const HTML2PDF_JS = fs.readFileSync(path.join(__dirname, '..', 'node_modules', 'html2pdf.js', 'dist', 'html2pdf.bundle.min.js'));
 
 const results = [];
 function check(name, cond) {
@@ -19,12 +20,13 @@ function check(name, cond) {
 }
 
 async function newPage(browser, viewport) {
-  const ctx = await browser.newContext({ viewport, deviceScaleFactor: 1, locale: 'th-TH', timezoneId: 'Asia/Bangkok' });
+  const ctx = await browser.newContext({ acceptDownloads: true, viewport, deviceScaleFactor: 1, locale: 'th-TH', timezoneId: 'Asia/Bangkok' });
   const page = await ctx.newPage();
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
   page.on('console', m => { if (m.type() === 'error' && !/fonts\.g|ERR_|net::/.test(m.text())) errors.push(m.text()); });
   await page.route(/cdnjs\.cloudflare\.com\/ajax\/libs\/xlsx/, r => r.fulfill({ body: XLSX_JS, contentType: 'application/javascript' }));
+  await page.route(/cdnjs\.cloudflare\.com\/ajax\/libs\/html2pdf/, r => r.fulfill({ body: HTML2PDF_JS, contentType: 'application/javascript' }));
   await page.route(/fonts\.(googleapis|gstatic)\.com/, r => r.abort());
   await page.goto(BASE);
   await page.waitForSelector('#view-home:not(.hidden) .stats', { timeout: 10000 });
@@ -125,6 +127,13 @@ async function newPage(browser, viewport) {
     await p.page.click('.nav button[data-view=report]');
     await p.page.waitForSelector('#view-report .bars');
     await p.page.screenshot({ path: path.join(OUT, name + '-03-report.png'), fullPage: true });
+    {
+      const [dl] = await Promise.all([p.page.waitForEvent('download', { timeout: 60000 }), p.page.click('button:has-text("ส่งออก PDF")')]);
+      const pdfPath = path.join(OUT, name + '-export.pdf');
+      await dl.saveAs(pdfPath);
+      const buf = fs.readFileSync(pdfPath);
+      check(name + ': ส่งออก PDF ได้ไฟล์ ' + dl.suggestedFilename(), buf.slice(0, 4).toString() === '%PDF' && buf.length > 20000);
+    }
     if (name === 'desktop') {
       await p.page.emulateMedia({ media: 'print' });
       await p.page.pdf({ path: path.join(OUT, 'report-print.pdf'), format: 'A4', printBackground: true });

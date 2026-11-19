@@ -42,6 +42,9 @@ class MockRange {
   }
   setNumberFormat() { return this; }
   setFontWeight() { return this; }
+  setFontColor() { return this; }
+  setBackground() { return this; }
+  setNotes(n) { this.sheet.notes = n; return this; }
 }
 
 class MockSheet {
@@ -61,6 +64,8 @@ class MockSheet {
     }, 0);
   }
   setFrozenRows() {}
+  setTabColor() {}
+  setColumnWidth() {}
   deleteRow(r) { this.data.splice(r - 1, 1); }
 }
 
