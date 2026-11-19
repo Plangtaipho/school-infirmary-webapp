@@ -482,7 +482,7 @@ views.record = function (opts) {
         var t = root.querySelectorAll('input[type=time]')[1]; if (t) t.value = f.time_out;
       }
       renderOutcomeExtra();
-    }, 'ผลการจัดการ'), false, 'ถ้านักเรียนยังนอนพักอยู่ เว้นไว้ก่อนได้ แล้วค่อยกด "ออกจากห้อง" ที่หน้าวันนี้'),
+    }, 'ผลการจัดการ'), false, 'ถ้านักเรียนยังนอนพักอยู่ เว้นไว้ก่อนได้ แล้วค่อยกด "ออกจากห้อง" ที่หน้าแรก'),
     outcomeExtra,
     field('หมายเหตุ', h('textarea', { maxlength: '500', oninput: function (e) { f.note = e.target.value; } }, f.note || ''))));
 
