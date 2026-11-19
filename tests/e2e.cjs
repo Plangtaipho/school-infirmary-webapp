@@ -43,8 +43,10 @@ async function newPage(browser, viewport) {
 
   // บันทึกนักเรียนที่แพ้พาราเซตามอล (36002 ตามข้อมูลตัวอย่าง)
   await page.click('text=+ บันทึกนักเรียนที่มาใหม่');
-  await page.fill('#studentSearch', '36003');
-  await page.click('.suggest li button');
+  check('หน้าบันทึกแสดงปุ่มเลือกห้อง ม.1/1 ถึง ม.6/2 (12 ห้อง)', (await page.locator('.class-chip').count()) === 12);
+  await page.click('.class-chip:has-text("ม.1/1")');
+  check('เลือกห้องแล้วแสดงรายชื่อเฉพาะห้องนั้น (4 คน)', (await page.locator('.name-btn').count()) === 4);
+  await page.click('.name-btn:has-text("กิตติพงษ์")');
   check('แสดงแถบเตือนแพ้ยาเมื่อเลือกนักเรียน', await page.locator('.alert.danger:has-text("แพ้ยา")').isVisible());
   await page.click('.chip:has-text("ปวดศีรษะ")');
   await page.click('.chip:has-text("ให้ยา")');
@@ -121,8 +123,8 @@ async function newPage(browser, viewport) {
     const p = await newPage(browser, vp);
     await p.page.screenshot({ path: path.join(OUT, name + '-01-home.png'), fullPage: true });
     await p.page.click('.nav button[data-view=record]');
-    await p.page.fill('#studentSearch', 'ม.4');
-    await p.page.click('.suggest li button >> nth=0');
+    await p.page.click('.class-chip:has-text("ม.4/1")');
+    await p.page.click('.name-btn >> nth=0');
     await p.page.screenshot({ path: path.join(OUT, name + '-02-record.png'), fullPage: true });
     await p.page.click('.nav button[data-view=report]');
     await p.page.waitForSelector('#view-report .bars');

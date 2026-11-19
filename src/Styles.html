@@ -141,6 +141,17 @@
     display: flex; justify-content: space-between; gap: 8px;
   }
   .suggest li button:hover, .suggest li button:focus { background: var(--brand-soft); }
+  /* เลือกห้อง แล้วเลือกชื่อ */
+  .class-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 8px; }
+  .class-chip { border-radius: 10px; font-weight: 600; font-size: 1.05rem; }
+  .name-list { display: grid; grid-template-columns: 1fr; gap: 6px; margin-top: 6px; }
+  @media (min-width: 700px) { .name-list { grid-template-columns: 1fr 1fr; } }
+  .name-btn {
+    display: flex; justify-content: space-between; align-items: center; gap: 8px; min-height: 48px;
+    padding: 10px 14px; border: 1px solid var(--line); border-radius: 10px; background: #fff; text-align: left; cursor: pointer;
+  }
+  .name-btn:hover, .name-btn:focus { background: var(--brand-soft); border-color: var(--brand); }
+  .name-btn .tags { display: flex; gap: 4px; flex-shrink: 0; }
   .student-card {
     display: flex; justify-content: space-between; align-items: flex-start; gap: 12px;
     padding: 12px 14px; border-radius: 10px; background: var(--brand-soft);

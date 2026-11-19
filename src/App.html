@@ -203,6 +203,16 @@ function searchStudents(q, limit) {
   return out;
 }
 
+/** รายชื่อห้องทั้งหมด เช่น ม.1/1, ม.1/2 ... เรียงตามชั้นและห้อง */
+function listClasses() {
+  var seen = {}, out = [];
+  state.students.forEach(function (s) {
+    var c = classLabel(s.grade, s.room) || 'ไม่ระบุชั้น';
+    if (!seen[c]) { seen[c] = true; out.push(c); }
+  });
+  return out;
+}
+
 function setStudents(list) {
   state.students = list.slice().sort(function (a, b) {
     return (a.grade + a.room).localeCompare(b.grade + b.room, 'th', { numeric: true }) ||
@@ -373,21 +383,35 @@ views.record = function (opts) {
       append(studentBox, healthAlerts(f.student));
       return;
     }
-    var input = h('input', { type: 'search', id: 'studentSearch', placeholder: 'พิมพ์ชื่อ หรือเลขประจำตัวนักเรียน', autocomplete: 'off', 'aria-autocomplete': 'list' });
-    var list = h('ul', { class: 'suggest hidden', role: 'listbox' });
-    input.addEventListener('input', function () {
-      var res = searchStudents(input.value, 8);
-      clear(list);
-      list.classList.toggle('hidden', !input.value.trim());
-      if (!res.length) { list.appendChild(h('li', { class: 'empty small', text: state.students.length ? 'ไม่พบนักเรียน' : 'ยังไม่มีรายชื่อนักเรียน กรุณานำเข้าที่เมนู "นักเรียน"' })); return; }
-      res.forEach(function (s) {
-        list.appendChild(h('li', { role: 'option' }, h('button', { type: 'button', onclick: function () { f.student = s; renderStudent(); renderOutcomeExtra(); } },
-          h('span', {}, studentName(s), s.drug_allergy ? h('span', { class: 'badge danger', style: 'margin-left:6px', text: 'แพ้ยา' }) : null),
-          h('span', { class: 'muted', text: classLabel(s.grade, s.room) + ' · ' + s.student_id }))));
-      });
+    if (!state.students.length) {
+      studentBox.appendChild(h('p', { class: 'muted', text: 'ยังไม่มีรายชื่อนักเรียน กรุณานำเข้าที่เมนู "นักเรียน"' }));
+      return;
+    }
+    var classes = listClasses();
+    var picked = state.pickClass && classes.indexOf(state.pickClass) !== -1 ? state.pickClass : '';
+    var classBtns = h('div', { class: 'class-grid', role: 'group', 'aria-label': 'เลือกห้อง' });
+    var nameBox = h('div', { class: 'name-pick' });
+    function renderNames() {
+      Array.prototype.forEach.call(classBtns.children, function (b) { b.setAttribute('aria-pressed', String(b.dataset.cls === picked)); });
+      clear(nameBox);
+      if (!picked) { nameBox.appendChild(h('p', { class: 'muted small', text: 'แตะเลือกห้องก่อน แล้วรายชื่อนักเรียนจะแสดงด้านล่าง' })); return; }
+      var inClass = state.students.filter(function (s) { return classLabel(s.grade, s.room) === picked; });
+      nameBox.appendChild(h('div', { class: 'label', style: 'margin-top:14px', text: 'ชั้น ' + picked + ' (' + inClass.length + ' คน) แตะชื่อนักเรียน' }));
+      nameBox.appendChild(h('div', { class: 'name-list' }, inClass.map(function (s) {
+        return h('button', { type: 'button', class: 'name-btn', onclick: function () { f.student = s; renderStudent(); renderOutcomeExtra(); } },
+          h('span', { class: 'nm', text: studentName(s) }),
+          h('span', { class: 'tags' },
+            s.drug_allergy ? h('span', { class: 'badge danger', text: 'แพ้ยา' }) : null,
+            s.chronic_disease ? h('span', { class: 'badge warn', text: 'โรคประจำตัว' }) : null));
+      })));
+    }
+    classes.forEach(function (c) {
+      classBtns.appendChild(h('button', { type: 'button', class: 'chip class-chip', 'data-cls': c, 'aria-pressed': 'false', text: c,
+        onclick: function () { picked = c; state.pickClass = c; renderNames(); } }));
     });
-    studentBox.appendChild(h('div', { class: 'search-wrap' }, input, list));
-    setTimeout(function () { input.focus(); }, 0);
+    studentBox.appendChild(classBtns);
+    studentBox.appendChild(nameBox);
+    renderNames();
   }
   renderStudent();
   root.appendChild(h('div', { class: 'card' }, h('div', { class: 'field', style: 'margin:0' }, h('div', { class: 'label' }, 'นักเรียน', h('span', { class: 'req', text: ' *' })), studentBox)));
@@ -469,7 +493,7 @@ views.record = function (opts) {
     saveBtn));
 
   function save() {
-    if (!f.student) { toast('กรุณาเลือกนักเรียน', true); var s = $('studentSearch'); if (s) s.focus(); return; }
+    if (!f.student) { toast('กรุณาเลือกนักเรียน', true); var cg = document.querySelector('#view-record .class-grid'); if (cg) cg.scrollIntoView({ block: 'center', behavior: 'smooth' }); return; }
     if (!f.symptoms.length && !f.symptom_note.trim()) { toast('กรุณาเลือกหรือระบุอาการอย่างน้อย 1 อย่าง', true); return; }
     if (!f.visit_date || !f.time_in) { toast('กรุณาระบุวันที่และเวลาเข้า', true); return; }
     if (f.time_out && f.time_out < f.time_in) { toast('เวลาออกต้องไม่ก่อนเวลาเข้า', true); return; }
