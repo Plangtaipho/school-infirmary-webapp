@@ -44,7 +44,7 @@ async function newPage(browser, viewport) {
   // บันทึกนักเรียนที่แพ้พาราเซตามอล (36002 ตามข้อมูลตัวอย่าง)
   await page.click('text=+ บันทึกนักเรียนที่มาใหม่');
   check('หน้าบันทึกแสดงปุ่มเลือกห้อง ม.1/1 ถึง ม.6/2 (12 ห้อง)', (await page.locator('.class-chip').count()) === 12);
-  check('วันที่แสดงเป็นภาษาไทย พ.ศ.', /^\d{1,2} [ก-๙]+ 25\d\d$/.test((await page.textContent('#view-record .th-date .th-shown')).trim()));
+  check('วันที่แสดงเป็นภาษาไทย พ.ศ.', /^\d{1,2} [ก-๙.]+ 25\d\d$/.test((await page.textContent('#view-record .th-date .th-shown')).trim()));
   check('เวลาเลือกเป็นชั่วโมง:นาที 24 ชม. (เวลาเข้า + เวลาออก)', (await page.locator('#view-record .th-hh').count()) === 2 && (await page.inputValue('#view-record .th-hh >> nth=1')) === '');
   await page.selectOption('#view-record .th-hh >> nth=0', '13');
   await page.selectOption('#view-record .th-mm >> nth=0', '45');
