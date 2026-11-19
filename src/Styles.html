@@ -303,18 +303,32 @@
 
   /* ---------- PDF: วาดรายงานในกรอบ A4 นอกจอ แล้วให้ html2pdf ถ่ายภาพ ---------- */
   .pdf-holder { position: absolute; left: -12000px; top: 0; width: 718px; background: #fff; }
-  .pdf-sheet { width: 718px; background: #fff; font-size: 14px; color: #111; }
+  /* กว้างคงที่ + เผื่อขอบขวา; minmax(0,1fr) กันคำไทยยาวดันคอลัมน์จนล้นขอบกระดาษ */
+  .pdf-sheet { width: 718px; box-sizing: border-box; padding: 0 8px; background: #fff; font-size: 14px; color: #111; overflow: hidden; }
+  .pdf-sheet .card, .pdf-sheet .stat, .pdf-sheet .bar-row > * { min-width: 0; overflow-wrap: anywhere; }
+  .pdf-sheet .card { padding: 9px 12px; margin-bottom: 8px; }
+  .pdf-sheet .stat { padding: 10px 12px; }
+  .pdf-sheet .stat .num { font-size: 1.7rem; }
+  .pdf-sheet .report-card h3 { font-size: 1rem; margin-bottom: 6px; }
+  .pdf-sheet .report-grid { gap: 8px; }
+  .pdf-sheet .stats { gap: 8px; margin-bottom: 8px; }
+  .pdf-sheet .sign-block { margin-top: 12px !important; line-height: 1.5; }
+  .pdf-sheet .sign-block p { margin: 0; }
+  .pdf-sheet td, .pdf-sheet th { overflow-wrap: normal; }
+  .pdf-sheet td:nth-child(3) { white-space: nowrap; }
+  .pdf-sheet .empty { padding: 6px 0; }
+  .pdf-sheet .sign-block { font-size: 13px; }
   .pdf-sheet .bar-row { grid-template-columns: 130px 1fr 36px; }
   .pdf-sheet .bar-row.with-pct { grid-template-columns: 128px 1fr 30px 46px; }
-  .pdf-sheet .report-row { margin-bottom: 12px; }
+  .pdf-sheet .report-row { margin-bottom: 8px; }
   .pdf-sheet .report-card h3::before, .pdf-sheet .card-head h2::before { display: none; }
   .pdf-sheet .report-card h3 { padding-left: 0; }
   .pdf-sheet table { font-size: 12.5px; }
   .pdf-sheet .print-only { display: block; }
   .pdf-sheet .no-print { display: none !important; }
   .pdf-sheet .card, .pdf-sheet .stat { box-shadow: none; border: 1px solid #cfd9e4; }
-  .pdf-sheet .stats { grid-template-columns: repeat(4, 1fr); }
-  .pdf-sheet .report-grid { grid-template-columns: 1fr 1fr; }
+  .pdf-sheet .stats { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .pdf-sheet .report-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
   .pdf-sheet .table-wrap { overflow: visible; }
 
   /* ---------- พิมพ์รายงาน ---------- */
