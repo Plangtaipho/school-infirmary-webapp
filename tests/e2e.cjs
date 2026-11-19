@@ -144,7 +144,7 @@ async function newPage(browser, viewport) {
   await page.screenshot({ path: path.join(OUT, 'mobile-06-report.png'), fullPage: true });
   check('รายงานแสดงกราฟอาการ', (await page.locator('#view-report .bar-row').count()) > 3);
   check('รายงาน: ไม่มีปุ่มพิมพ์รายงาน', (await page.locator('#view-report button:has-text("พิมพ์")').count()) === 0);
-  check('รายงาน: หัวกราฟบอกหน่วย "ครั้ง" และ "ร้อยละ"', (await page.locator('#view-report .bar-head:has-text("ครั้ง")').count()) >= 4 && (await page.locator('#view-report .bar-head:has-text("ร้อยละ")').count()) >= 2);
+  check('รายงาน: หัวกราฟบอกหน่วย "คน" และ "ร้อยละ"', (await page.locator('#view-report .bar-head:has-text("คน")').count()) >= 4 && (await page.locator('#view-report .bar-head:has-text("ร้อยละ")').count()) >= 2);
   check('รายงาน: ตัวเลขสรุปมีหน่วย', (await page.locator('#view-report .stat .unit').count()) === 4);
   check('รายงาน: มีหัวข้ออุณหภูมิร่างกาย', await page.locator('#view-report h3:has-text("อุณหภูมิ")').isVisible());
 

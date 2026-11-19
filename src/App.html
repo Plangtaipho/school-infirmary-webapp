@@ -790,7 +790,7 @@ function bars(items, emptyText, labelHeader, total) {
   items.forEach(function (i) { if (i.count > max) max = i.count; });
   var cls = 'bar-row' + (total ? ' with-pct' : '');
   return h('div', { class: 'bars' },
-    h('div', { class: cls + ' bar-head' }, h('span', { text: labelHeader || '' }), h('span'), h('span', { class: 'n', text: 'ครั้ง' }), total ? h('span', { class: 'pct', text: 'ร้อยละ' }) : null),
+    h('div', { class: cls + ' bar-head' }, h('span', { text: labelHeader || '' }), h('span'), h('span', { class: 'n', text: 'คน' }), total ? h('span', { class: 'pct', text: 'ร้อยละ' }) : null),
     items.map(function (i) {
       return h('div', { class: cls },
         h('span', { text: i.label }),
@@ -870,13 +870,13 @@ function renderReport(out, d) {
   // จัดเป็นแถวละ 2 การ์ด เพื่อให้ PDF ตัดหน้าระหว่างแถว ไม่ตัดกลางการ์ด
   function row(a, b) { return h('div', { class: 'report-grid report-row' }, a, b); }
   out.appendChild(row(
-    section('อาการที่พบ', bars(d.bySymptom, null, 'อาการ'), '1 ครั้งเลือกได้หลายอาการ ผลรวมจึงอาจมากกว่าจำนวนครั้งที่มา'),
+    section('อาการที่พบ', bars(d.bySymptom, null, 'อาการ'), '1 คนเลือกได้หลายอาการ ผลรวมจึงอาจมากกว่าจำนวนที่มา'),
     section('อุณหภูมิร่างกาย', bars(d.byTemperature || [], 'ไม่มีข้อมูลอุณหภูมิ', 'ช่วงอุณหภูมิ (°C)', d.total))));
   out.appendChild(row(
     section('แยกตามระดับชั้น', bars(d.byGrade, null, 'ระดับชั้น', d.total)),
     section('ผลการจัดการ', bars(d.byOutcome, null, 'ผลการจัดการ', d.total))));
   out.appendChild(row(
-    section('การดูแลที่ให้', bars(d.byCare, 'ไม่ได้ระบุการดูแล', 'การดูแล'), '1 ครั้งอาจได้รับการดูแลหลายอย่าง'),
+    section('การดูแลที่ให้', bars(d.byCare, 'ไม่ได้ระบุการดูแล', 'การดูแล'), '1 คนอาจได้รับการดูแลหลายอย่าง'),
     section('ยาที่ใช้', d.medicines.length
       ? table(['ชื่อยา', 'ให้ (ครั้ง)', 'รวม'], d.medicines.map(function (m) { return [m.label, m.count, m.quantity ? fmtNum(m.quantity) + ' ' + (m.unit || '') : '-']; }), [1, 2])
       : h('div', { class: 'empty', text: 'ไม่มีการให้ยา' }))));
