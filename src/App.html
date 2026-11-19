@@ -599,8 +599,8 @@ views.history = function () {
   qInput.addEventListener('input', function (e) { clearTimeout(qTimer); qTimer = setTimeout(function () { flt.q = e.target.value; load(); }, 400); });
   root.appendChild(h('div', { class: 'card' },
     h('div', { class: 'filters' },
-      field('ตั้งแต่วันที่', thDateInput(flt.from, function (v) { flt.from = v; load(); })),
-      field('ถึงวันที่', thDateInput(flt.to, function (v) { flt.to = v; load(); })),
+      field('ตั้งแต่วันที่', thDateInput(flt.from, function (v) { flt.from = v; load(); }, true)),
+      field('ถึงวันที่', thDateInput(flt.to, function (v) { flt.to = v; load(); }, true)),
       field('ค้นหา', qInput),
       field('ชั้น', select('grade', gradeOptions(), 'ทุกชั้น')),
       field('ผลการจัดการ', select('outcome', state.settings.outcome, 'ทั้งหมด')))));
@@ -634,8 +634,8 @@ views.report = function () {
   var root = clear($('view-report'));
   var range = state.reportRange || monthRange(0);
   state.reportRange = range;
-  var fromI = thDateInput(range.from);
-  var toI = thDateInput(range.to);
+  var fromI = thDateInput(range.from, null, true);
+  var toI = thDateInput(range.to, null, true);
   var out = h('div');
   function preset(label, r) {
     return h('button', { type: 'button', class: 'btn small', text: label, onclick: function () { fromI.value = r.from; toI.value = r.to; run(); } });
