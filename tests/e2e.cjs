@@ -66,8 +66,7 @@ async function newPage(browser, viewport) {
     await page.locator('text=ออกจากห้อง').first().click();
   });
   await page.click('.modal .chip:has-text("ผู้ปกครองรับกลับบ้าน")');
-  check('ถามแจ้งผู้ปกครองและแสดงเบอร์โทร', await page.locator('.modal a[href^="tel:"]').isVisible());
-  await page.check('.modal input[type=checkbox]');
+  check('แสดงเบอร์โทรผู้ปกครองและไม่มีช่องแจ้งผู้ปกครอง', await page.locator('.modal a[href^="tel:"]').isVisible() && (await page.locator('.modal input[type=checkbox]').count()) === 0);
   await page.screenshot({ path: path.join(OUT, 'mobile-03-checkout.png') });
   await page.click('.modal button:has-text("บันทึกเวลาออก")');
   await page.waitForSelector('.toast:has-text("บันทึกเวลาออกแล้ว")');

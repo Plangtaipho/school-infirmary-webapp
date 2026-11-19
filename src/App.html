@@ -275,7 +275,6 @@ function visitItem(v) {
 function checkoutModal(v) {
   var outcome = v.outcome || '';
   var referral = v.referral_place || '';
-  var notified = v.parent_notified;
   var student = state.studentById[v.student_id];
   var extra = h('div');
   function renderExtra() {
@@ -287,7 +286,6 @@ function checkoutModal(v) {
       if (student && student.parent_phone) {
         extra.appendChild(h('p', {}, 'เบอร์ผู้ปกครอง: ', h('a', { href: 'tel:' + student.parent_phone.replace(/[^\d+]/g, ''), text: student.parent_phone })));
       }
-      extra.appendChild(h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: notified, onchange: function (e) { notified = e.target.checked; } }), 'แจ้งผู้ปกครองแล้ว'));
     }
   }
   renderExtra();
@@ -299,7 +297,7 @@ function checkoutModal(v) {
     { label: 'ยกเลิก' },
     { label: 'บันทึกเวลาออก', kind: 'primary', onClick: function (close) {
       if (!outcome) { toast('กรุณาเลือกผลการจัดการ', true); return false; }
-      api('apiCheckout', v.visit_id, outcome, referral, notified).then(function () {
+      api('apiCheckout', v.visit_id, outcome, referral).then(function () {
         close(); toast('บันทึกเวลาออกแล้ว'); if (state.view === 'home') views.home();
       }).catch(showError);
       return false;
@@ -319,7 +317,6 @@ function visitDetailModal(v) {
     ['ยาที่ให้', meds.join(', ') || '-'],
     ['ผลการจัดการ', v.outcome || '-'],
     ['สถานที่ส่งต่อ', v.referral_place || '-'],
-    ['แจ้งผู้ปกครอง', v.parent_notified ? 'แจ้งแล้ว' : '-'],
     ['หมายเหตุ', v.note || '-'],
     ['เลขที่รายการ', v.visit_id + (v.status === 'ยกเลิก' ? ' (ยกเลิกแล้ว)' : '')]
   ];
@@ -354,11 +351,11 @@ views.record = function (opts) {
     symptoms: editing.symptoms.slice(), symptom_note: editing.symptom_note,
     care_types: editing.care_types.slice(),
     medicines: editing.medicines.map(function (m) { return { medicine_name: m.medicine_name, quantity: m.quantity, unit: m.unit }; }),
-    outcome: editing.outcome, referral_place: editing.referral_place, parent_notified: editing.parent_notified, note: editing.note
+    outcome: editing.outcome, referral_place: editing.referral_place, note: editing.note
   } : {
     student: null, visit_date: state.today || isoDate(new Date()), time_in: nowTime(), time_out: '',
     symptoms: [], symptom_note: '', care_types: [], medicines: [],
-    outcome: '', referral_place: '', parent_notified: false, note: ''
+    outcome: '', referral_place: '', note: ''
   };
 
   root.appendChild(h('h2', { style: 'margin-bottom:12px', text: editing ? 'แก้ไขรายการ ' + editing.visit_id : 'บันทึกการเข้าห้องพยาบาล' }));
@@ -450,7 +447,6 @@ views.record = function (opts) {
       if (f.student && f.student.parent_phone) {
         outcomeExtra.appendChild(h('p', {}, 'เบอร์ผู้ปกครอง: ', h('a', { href: 'tel:' + f.student.parent_phone.replace(/[^\d+]/g, ''), text: f.student.parent_phone })));
       }
-      outcomeExtra.appendChild(h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: f.parent_notified, onchange: function (e) { f.parent_notified = e.target.checked; } }), 'แจ้งผู้ปกครองแล้ว'));
     }
   }
   renderOutcomeExtra();
@@ -489,7 +485,7 @@ views.record = function (opts) {
         visit_id: editing ? editing.visit_id : '',
         student_id: f.student.student_id, visit_date: f.visit_date, time_in: f.time_in, time_out: f.time_out,
         symptoms: f.symptoms, symptom_note: f.symptom_note, care_types: f.care_types, medicines: meds,
-        outcome: f.outcome, referral_place: f.referral_place, parent_notified: f.parent_notified, note: f.note
+        outcome: f.outcome, referral_place: f.referral_place, note: f.note
       }).then(function (v) {
         toast((editing ? 'บันทึกการแก้ไข ' : 'บันทึก ') + v.student_name + ' แล้ว');
         go(editing ? 'history' : 'home');
@@ -633,9 +629,9 @@ function renderReport(out, d) {
     ? table(['ชื่อยา', 'จำนวนครั้ง', 'ปริมาณรวม'], d.medicines.map(function (m) { return [m.label, m.count, m.quantity ? m.quantity + ' ' + m.unit : '-']; }), [1, 2])
     : h('div', { class: 'empty', text: 'ไม่มีการให้ยา' })));
   out.appendChild(section('รายการส่งต่อ / ผู้ปกครองรับกลับ (' + d.referrals.length + ')', d.referrals.length
-    ? table(['วันที่', 'นักเรียน', 'ชั้น', 'อาการ', 'การจัดการ', 'แจ้งผู้ปกครอง'], d.referrals.map(function (r) {
+    ? table(['วันที่', 'นักเรียน', 'ชั้น', 'อาการ', 'การจัดการ'], d.referrals.map(function (r) {
       return [thDate(r.visit_date) + ' ' + r.time_in, r.student_name, classLabel(r.grade, r.room), r.symptoms,
-        r.outcome + (r.referral_place ? ' (' + r.referral_place + ')' : ''), r.parent_notified ? 'แจ้งแล้ว' : '-'];
+        r.outcome + (r.referral_place ? ' (' + r.referral_place + ')' : '')];
     }))
     : h('div', { class: 'empty', text: 'ไม่มีการส่งต่อ' })));
   if (d.frequent.length) {

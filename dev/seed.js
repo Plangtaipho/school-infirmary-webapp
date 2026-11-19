@@ -52,8 +52,7 @@ function seed(gas) {
         time_out: `${String(hh + 1).padStart(2, '0')}:00`,
         symptoms: sym, care_types: giveMed ? ['ให้นอนพัก', 'ให้ยา'] : ['ให้นอนพัก'],
         medicines: giveMed ? [{ medicine_name: sym[0] === 'ปวดท้อง' ? 'ยาธาตุน้ำขาว' : 'พาราเซตามอล 500 มก.', quantity: 1, unit: sym[0] === 'ปวดท้อง' ? 'ช้อนชา' : 'เม็ด' }] : [],
-        outcome, referral_place: outcome === 'ส่งต่อ รพ.สต.' ? 'รพ.สต.บ้านหนองแวง' : outcome === 'ส่งต่อโรงพยาบาล' ? 'โรงพยาบาลจังหวัด' : '',
-        parent_notified: outcome !== 'กลับเข้าเรียน'
+        outcome, referral_place: outcome === 'ส่งต่อ รพ.สต.' ? 'รพ.สต.บ้านหนองแวง' : outcome === 'ส่งต่อโรงพยาบาล' ? 'โรงพยาบาลจังหวัด' : ''
       });
     }
   }

@@ -124,10 +124,10 @@ test('ลงเวลาออก และหน้าหลักแสดง�
   assert.equal(t.count, 2);
   assert.equal(t.inRoom.length, 2);
   g.__setNow('2026-11-19T03:05:00Z'); // 10:05
-  const c = g.apiCheckout(a, 'ผู้ปกครองรับกลับบ้าน', '', true);
+  const c = g.apiCheckout(a, 'ผู้ปกครองรับกลับบ้าน', '');
   assert.equal(c.ok, true);
   assert.equal(c.data.time_out, '10:05');
-  assert.equal(c.data.parent_notified, true);
+  assert.equal(c.data.parent_notified, undefined);
   t = g.apiToday().data;
   assert.equal(t.inRoom.length, 1);
   assert.equal(t.sentHome, 1);

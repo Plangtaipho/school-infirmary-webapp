@@ -24,7 +24,7 @@ var COLUMNS = {
   Visits: [
     'visit_id', 'visit_date', 'time_in', 'time_out', 'student_id', 'student_name',
     'grade', 'room', 'symptoms', 'symptom_note', 'care_types', 'outcome',
-    'referral_place', 'parent_notified', 'note', 'status', 'created_at', 'updated_at'
+    'referral_place', 'note', 'status', 'created_at', 'updated_at'
   ],
   VisitMedicines: ['visit_id', 'medicine_name', 'quantity', 'unit'],
   Settings: ['list_type', 'value', 'sort_order'],

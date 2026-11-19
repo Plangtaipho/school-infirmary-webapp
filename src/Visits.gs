@@ -71,7 +71,6 @@ function normalizeVisitInput_(input) {
     medicines: cleanMedicines_(input.medicines),
     outcome: cleanText_(input.outcome, 50),
     referral_place: cleanText_(input.referral_place, 200),
-    parent_notified: input.parent_notified ? 'TRUE' : 'FALSE',
     note: cleanText_(input.note)
   };
 }
@@ -101,7 +100,6 @@ function apiSaveVisit(rawInput) {
         care_types: input.care_types.join(LIST_SEP),
         outcome: input.outcome,
         referral_place: input.referral_place,
-        parent_notified: input.parent_notified,
         note: input.note,
         status: STATUS_ACTIVE,
         updated_at: now
@@ -137,7 +135,7 @@ function apiSaveVisit(rawInput) {
 }
 
 /** ลงเวลาออกจากห้องพยาบาล พร้อมผลการจัดการ */
-function apiCheckout(visitId, outcome, referralPlace, parentNotified) {
+function apiCheckout(visitId, outcome, referralPlace) {
   return handle_('checkout', function () {
     return withLock_(function () {
       var id = cleanText_(visitId, 20);
@@ -148,9 +146,6 @@ function apiCheckout(visitId, outcome, referralPlace, parentNotified) {
       if (outcome) v.outcome = cleanText_(outcome, 50);
       if (referralPlace !== undefined && referralPlace !== null && referralPlace !== '') {
         v.referral_place = cleanText_(referralPlace, 200);
-      }
-      if (parentNotified !== undefined && parentNotified !== null) {
-        v.parent_notified = parentNotified ? 'TRUE' : 'FALSE';
       }
       v.updated_at = nowText_();
       updateRow_(SHEETS.VISITS, v._row, v);
@@ -200,7 +195,6 @@ function publicVisit_(v, meds) {
     medicines: meds || [],
     outcome: v.outcome || '',
     referral_place: v.referral_place || '',
-    parent_notified: v.parent_notified === 'TRUE',
     note: v.note || '',
     status: v.status || STATUS_ACTIVE
   };

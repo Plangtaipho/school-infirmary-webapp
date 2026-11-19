@@ -52,7 +52,7 @@ function buildReport_(from, to) {
       return {
         visit_date: v.visit_date, time_in: v.time_in, student_name: v.student_name,
         grade: v.grade, room: v.room, symptoms: v.symptoms.concat(v.symptom_note ? [v.symptom_note] : []).join(', '),
-        outcome: v.outcome, referral_place: v.referral_place, parent_notified: v.parent_notified
+        outcome: v.outcome, referral_place: v.referral_place
       };
     });
 
