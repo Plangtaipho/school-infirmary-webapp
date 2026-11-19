@@ -209,9 +209,35 @@ function thTimeInput(value, onchange, optional) {
   return wrap;
 }
 
-function statCard(num, label, kind) {
-  return h('div', { class: 'stat ' + (kind || '') }, h('div', { class: 'num', text: String(num) }), h('div', { class: 'label', text: label }));
+function statCard(num, label, kind, unit) {
+  return h('div', { class: 'stat ' + (kind || '') },
+    h('div', { class: 'num' }, String(num), unit ? h('span', { class: 'unit', text: ' ' + unit }) : null),
+    h('div', { class: 'label', text: label }));
 }
+
+/* ---------- อุณหภูมิร่างกาย ---------- */
+/** "37,5" / "375" → "37.5"  ไม่ใช่ตัวเลข → คืนค่าเดิม */
+function normTemp(v) {
+  var s = String(v || '').trim().replace(',', '.');
+  if (!s) return '';
+  var n = Number(s);
+  if (!isFinite(n)) return s;
+  if (n >= 300 && n <= 450) n = n / 10;
+  return (Math.round(n * 10) / 10).toFixed(1);
+}
+function tempLevel(t) {
+  if (!t || !isFinite(Number(t))) return '';
+  var n = Number(t);
+  return n >= state.tempHighFever ? 'high' : n >= state.tempFever ? 'fever' : 'normal';
+}
+function tempBadge(t) {
+  var lv = tempLevel(t);
+  if (lv === 'high') return h('span', { class: 'badge danger', text: 'ไข้สูง ' + t + '°' });
+  if (lv === 'fever') return h('span', { class: 'badge warn', text: 'มีไข้ ' + t + '°' });
+  return null;
+}
+function symptomText(v) { return v.symptoms.concat(v.symptom_note ? [v.symptom_note] : []).join(', '); }
+function tempText(v) { return v.temperature ? ' · ' + v.temperature + '°C' : ''; }
 function outcomeBadge(v) {
   if (!v.time_out && !v.outcome) return h('span', { class: 'badge warn', text: 'อยู่ในห้องพยาบาล' });
   if (!v.outcome) return h('span', { class: 'badge', text: 'ออกแล้ว' });
@@ -305,7 +331,7 @@ views.home = function () {
       inRoomList.appendChild(h('li', { class: 'item' },
         h('div', {},
           h('div', { class: 'title', text: v.student_name }),
-          h('div', { class: 'meta', text: classLabel(v.grade, v.room) + ' · เข้า ' + v.time_in + (v.visit_date !== d.today ? ' (' + thDate(v.visit_date) + ')' : '') + ' · ' + v.symptoms.concat(v.symptom_note ? [v.symptom_note] : []).join(', ') })),
+          h('div', { class: 'meta', text: classLabel(v.grade, v.room) + ' · เข้า ' + v.time_in + (v.visit_date !== d.today ? ' (' + thDate(v.visit_date) + ')' : '') + tempText(v) + ' · ' + symptomText(v) })),
         h('button', { type: 'button', class: 'btn small primary', text: 'ออกจากห้อง', onclick: function () { checkoutModal(v); } })
       ));
     });
@@ -325,7 +351,7 @@ function visitItem(v) {
     h('div', {},
       h('div', { class: 'title', text: v.student_name + (v.status === 'ยกเลิก' ? ' (ยกเลิกแล้ว)' : '') }),
       h('div', { class: 'meta', text: thDate(v.visit_date) + ' ' + v.time_in + (v.time_out ? '–' + v.time_out : '') + ' · ' + classLabel(v.grade, v.room) }),
-      h('div', { class: 'meta', text: v.symptoms.concat(v.symptom_note ? [v.symptom_note] : []).join(', ') })),
+      h('div', { class: 'meta', text: symptomText(v) + tempText(v) })),
     outcomeBadge(v));
 }
 
@@ -347,7 +373,7 @@ function checkoutModal(v) {
   }
   renderExtra();
   var body = h('div', {},
-    h('p', { class: 'muted', text: v.student_name + ' · เข้า ' + v.time_in + ' น.' }),
+    h('p', { class: 'muted', text: v.student_name + ' · เข้า ' + v.time_in + ' น.' + tempText(v) }),
     h('div', { class: 'alert ok' }, h('strong', { text: 'เวลาออก ' + nowTime() + ' น.' }), ' ระบบลงเวลาให้อัตโนมัติเมื่อกดบันทึก'),
     field('ผลการจัดการ', chipGroup(state.settings.outcome, outcome ? [outcome] : [], false, function (s) { outcome = s[0] || ''; renderExtra(); }, 'ผลการจัดการ'), true),
     extra);
@@ -370,7 +396,8 @@ function visitDetailModal(v) {
     ['เวลา', v.time_in + ' น. – ' + (v.time_out ? v.time_out + ' น.' : 'ยังอยู่ในห้องพยาบาล')],
     ['นักเรียน', v.student_name + ' (' + v.student_id + ')'],
     ['ชั้น', classLabel(v.grade, v.room)],
-    ['อาการ', v.symptoms.concat(v.symptom_note ? [v.symptom_note] : []).join(', ') || '-'],
+    ['อุณหภูมิ', v.temperature ? v.temperature + ' °C' + (tempLevel(v.temperature) === 'high' ? ' (ไข้สูง)' : tempLevel(v.temperature) === 'fever' ? ' (มีไข้)' : '') : 'ไม่ได้วัด'],
+    ['อาการ', symptomText(v) || '-'],
     ['การดูแล', v.care_types.join(', ') || '-'],
     ['ยาที่ให้', meds.join(', ') || '-'],
     ['ผลการจัดการ', v.outcome || '-'],
@@ -396,6 +423,52 @@ function visitDetailModal(v) {
   openModal('รายละเอียดการเข้าห้องพยาบาล', dl, actions);
 }
 
+/* ---------- จัดการรายการยา (เพิ่มชนิดยา / หน่วยเริ่มต้น / เอาออก) ---------- */
+function applyMedicineSettings(r) { state.settings = r.settings; state.medicineUnits = r.medicineUnits; }
+
+function medicineEditModal(name, onSaved) {
+  var isNew = !name;
+  var nameVal = name || '';
+  var unitVal = (name && state.medicineUnits[name]) || '';
+  var body = h('div', {},
+    field('ชื่อยา', h('input', { type: 'text', id: 'medNameInput', value: nameVal, maxlength: '100', placeholder: 'เช่น ยาแก้ไอน้ำดำ', disabled: !isNew, oninput: function (e) { nameVal = e.target.value; } }), true),
+    field('หน่วยที่ใช้บ่อย', chipGroup(state.settings.unit, unitVal ? [unitVal] : [], false, function (s) { unitVal = s[0] || ''; }, 'หน่วยยา'), false,
+      'ตอนบันทึก เลือกยานี้แล้วระบบจะเลือกหน่วยนี้ให้อัตโนมัติ'));
+  openModal(isNew ? 'เพิ่มยาชนิดใหม่' : 'แก้ไขหน่วยของ ' + name, body, [
+    { label: 'ยกเลิก' },
+    { label: 'บันทึก', kind: 'primary', onClick: function (close) {
+      if (!nameVal.trim()) { toast('กรุณาพิมพ์ชื่อยา', true); return false; }
+      api('apiSaveMedicine', nameVal.trim(), unitVal).then(function (r) {
+        applyMedicineSettings(r); close(); toast(isNew ? 'เพิ่มยาแล้ว' : 'บันทึกแล้ว');
+        if (onSaved) onSaved(nameVal.trim());
+      }).catch(showError);
+      return false;
+    } }
+  ]);
+}
+
+function medicineListModal(onChanged) {
+  var ul = h('ul', { class: 'list' }, state.settings.medicine.map(function (name) {
+    return h('li', { class: 'item' },
+      h('div', {}, h('div', { class: 'title', text: name }), h('div', { class: 'meta', text: 'หน่วย: ' + (state.medicineUnits[name] || '-') })),
+      h('div', { class: 'btn-row' },
+        h('button', { type: 'button', class: 'btn small', text: 'แก้หน่วย', onclick: function () {
+          medicineEditModal(name, function () { medicineListModal(onChanged); if (onChanged) onChanged(); });
+        } }),
+        h('button', { type: 'button', class: 'btn small danger', text: 'เอาออก', onclick: function () {
+          confirmModal('เอา ' + name + ' ออกจากรายการ?', 'ประวัติการให้ยาที่บันทึกไว้แล้วยังอยู่ครบ', 'เอาออก', 'danger').then(function (ok) {
+            if (!ok) { medicineListModal(onChanged); return; }
+            api('apiRemoveMedicine', name).then(function (r) { applyMedicineSettings(r); toast('เอาออกแล้ว'); medicineListModal(onChanged); if (onChanged) onChanged(); }).catch(showError);
+          });
+        } })));
+  }));
+  openModal('รายการยา (' + state.settings.medicine.length + ' ชนิด)', h('div', {},
+    h('button', { type: 'button', class: 'btn primary', style: 'width:100%;margin-bottom:8px', text: '+ เพิ่มยาชนิดใหม่', onclick: function () {
+      medicineEditModal(null, function () { medicineListModal(onChanged); if (onChanged) onChanged(); });
+    } }),
+    h('div', { class: 'modal-scroll' }, ul)), [{ label: 'ปิด' }]);
+}
+
 /* ============================================================
  * หน้า "บันทึก"
  * ============================================================ */
@@ -407,12 +480,13 @@ views.record = function (opts) {
       student_id: editing.student_id, first_name: editing.student_name, last_name: '', prefix: '', grade: editing.grade, room: editing.room
     },
     visit_date: editing.visit_date, time_in: editing.time_in, time_out: editing.time_out,
+    temperature: editing.temperature || '',
     symptoms: editing.symptoms.slice(), symptom_note: editing.symptom_note,
     care_types: editing.care_types.slice(),
     medicines: editing.medicines.map(function (m) { return { medicine_name: m.medicine_name, quantity: m.quantity, unit: m.unit }; }),
     outcome: editing.outcome, referral_place: editing.referral_place, note: editing.note
   } : {
-    student: null, visit_date: state.today || isoDate(new Date()), time_in: nowTime(), time_out: '',
+    student: null, visit_date: state.today || isoDate(new Date()), time_in: nowTime(), time_out: '', temperature: '',
     symptoms: [], symptom_note: '', care_types: [], medicines: [],
     outcome: '', referral_place: '', note: ''
   };
@@ -472,27 +546,73 @@ views.record = function (opts) {
       field('เวลาเข้า', thTimeInput(f.time_in, function (v) { f.time_in = v; }), true),
       field('เวลาออก', thTimeInput(f.time_out, function (v) { f.time_out = v; }, true), false, 'เว้นว่างได้ถ้ายังพักอยู่'))));
 
-  /* 3) อาการ */
+  /* 3) อุณหภูมิ (ครูวัดก่อนทุกครั้ง) */
+  var tempHint = h('div');
+  var tempInput = h('input', { type: 'text', id: 'tempInput', class: 'temp-input', inputmode: 'decimal', autocomplete: 'off', maxlength: '5',
+    value: f.temperature, placeholder: 'เช่น 36.8', 'aria-label': 'อุณหภูมิร่างกาย องศาเซลเซียส',
+    oninput: function (e) { f.temperature = e.target.value.trim(); renderTempHint(); },
+    onchange: function (e) { var t = normTemp(e.target.value); if (t && isFinite(Number(t))) { e.target.value = t; f.temperature = t; } renderTempHint(); } });
+  function renderTempHint() {
+    clear(tempHint);
+    if (!f.temperature) return;
+    var t = normTemp(f.temperature), n = Number(t);
+    if (!isFinite(n) || n < 30 || n > 45) { tempHint.appendChild(h('div', { class: 'error-text', text: 'ใส่ตัวเลขระหว่าง 30–45 องศา เช่น 37.5' })); return; }
+    var lv = tempLevel(t);
+    if (lv === 'high') tempHint.appendChild(h('div', { class: 'alert danger' }, h('strong', { text: 'ไข้สูง ' + t + ' °C ' }), 'ควรเช็ดตัวลดไข้ และพิจารณาแจ้งผู้ปกครองหรือส่งต่อ'));
+    else if (lv === 'fever') tempHint.appendChild(h('div', { class: 'alert warn' }, h('strong', { text: 'มีไข้ ' + t + ' °C' })));
+    else tempHint.appendChild(h('div', { class: 'temp-ok', text: 'อุณหภูมิปกติ' }));
+  }
+  renderTempHint();
+  root.appendChild(h('div', { class: 'card' },
+    h('div', { class: 'field', style: 'margin:0' },
+      h('label', { for: 'tempInput' }, 'อุณหภูมิร่างกาย', editing ? null : h('span', { class: 'req', text: ' *' })),
+      h('div', { class: 'temp-wrap' }, tempInput, h('span', { class: 'temp-unit', text: '°C' })),
+      tempHint)));
+
+  /* 4) อาการ */
   root.appendChild(h('div', { class: 'card' },
     field('อาการ (เลือกได้หลายข้อ)', chipGroup(state.settings.symptom, f.symptoms, true, function (s) { f.symptoms = s; }, 'อาการ'), true),
-    field('อาการอื่น / รายละเอียดเพิ่มเติม', h('input', { type: 'text', value: f.symptom_note, maxlength: '500', placeholder: 'เช่น ไข้ 38.5 องศา, ถูกผึ้งต่อยที่แขน', oninput: function (e) { f.symptom_note = e.target.value; } }))));
+    field('อาการอื่น / รายละเอียดเพิ่มเติม', h('input', { type: 'text', value: f.symptom_note, maxlength: '500', placeholder: 'เช่น ถูกผึ้งต่อยที่แขน, ปวดมา 2 วัน', oninput: function (e) { f.symptom_note = e.target.value; } }))));
 
   /* 4) การดูแล + ยา */
   var medBox = h('div');
-  var medList = h('datalist', { id: 'medList' }, state.settings.medicine.map(function (m) { return h('option', { value: m }); }));
+  function newMed() { return { medicine_name: '', quantity: '1', unit: '' }; }
   function renderMeds() {
     clear(medBox);
     f.medicines.forEach(function (m, i) {
-      medBox.appendChild(h('div', { class: 'med-row' },
-        h('input', { type: 'text', list: 'medList', value: m.medicine_name, placeholder: 'ชื่อยา', 'aria-label': 'ชื่อยา', oninput: function (e) { m.medicine_name = e.target.value; }, onchange: renderAllergyWarn }),
-        h('input', { type: 'number', min: '0', step: '0.5', value: m.quantity, placeholder: 'จำนวน', 'aria-label': 'จำนวน', inputmode: 'decimal', oninput: function (e) { m.quantity = e.target.value; } }),
-        h('input', { type: 'text', value: m.unit, placeholder: 'หน่วย', 'aria-label': 'หน่วย', oninput: function (e) { m.unit = e.target.value; } }),
-        h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'ลบยานี้', text: '×', onclick: function () { f.medicines.splice(i, 1); renderMeds(); } })));
+      var names = state.settings.medicine.slice();
+      if (m.medicine_name && names.indexOf(m.medicine_name) === -1) names.unshift(m.medicine_name);
+      var sel = h('select', { class: 'med-name', 'aria-label': 'ชื่อยา', onchange: function (e) {
+        var v = e.target.value;
+        if (v === '__new__') {
+          e.target.value = m.medicine_name;
+          medicineEditModal(null, function (name) { m.medicine_name = name; m.unit = state.medicineUnits[name] || m.unit; renderMeds(); });
+          return;
+        }
+        m.medicine_name = v;
+        if (state.medicineUnits[v]) m.unit = state.medicineUnits[v];
+        renderMeds();
+      } },
+        h('option', { value: '', text: '— เลือกยา —' }),
+        names.map(function (n) { return h('option', { value: n, text: n, selected: n === m.medicine_name }); }),
+        h('option', { value: '__new__', text: '+ เพิ่มยาชนิดใหม่…' }));
+      var units = state.settings.unit.slice();
+      if (m.unit && units.indexOf(m.unit) === -1) units.push(m.unit);
+      var qty = h('input', { type: 'text', inputmode: 'decimal', class: 'qty-input', value: m.quantity, 'aria-label': 'จำนวน', oninput: function (e) { m.quantity = e.target.value; } });
+      function step(d) { var n = Math.max(0, (Number(m.quantity) || 0) + d); m.quantity = String(n); qty.value = m.quantity; }
+      medBox.appendChild(h('div', { class: 'med-item' },
+        h('div', { class: 'med-top' }, sel,
+          h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'ลบยานี้', text: '×', onclick: function () { f.medicines.splice(i, 1); renderMeds(); } })),
+        h('div', { class: 'med-qty' },
+          h('span', { class: 'muted', text: 'จำนวน' }),
+          h('button', { type: 'button', class: 'step-btn', 'aria-label': 'ลดจำนวน', text: '−', onclick: function () { step(-0.5); } }),
+          qty,
+          h('button', { type: 'button', class: 'step-btn', 'aria-label': 'เพิ่มจำนวน', text: '+', onclick: function () { step(0.5); } })),
+        chipGroup(units, m.unit ? [m.unit] : [], false, function (sel2) { m.unit = sel2[0] || ''; }, 'หน่วยยา')));
     });
-    medBox.appendChild(h('button', { type: 'button', class: 'btn small', text: '+ เพิ่มยา', onclick: function () {
-      f.medicines.push({ medicine_name: '', quantity: '1', unit: 'เม็ด' }); renderMeds();
-      var inputs = medBox.querySelectorAll('input[list]'); inputs[inputs.length - 1].focus();
-    } }));
+    medBox.appendChild(h('div', { class: 'btn-row' },
+      h('button', { type: 'button', class: 'btn small', text: '+ เพิ่มยา', onclick: function () { f.medicines.push(newMed()); renderMeds(); } }),
+      h('button', { type: 'button', class: 'btn small ghost', text: 'จัดการรายการยา', onclick: function () { medicineListModal(renderMeds); } })));
     renderAllergyWarn();
   }
   var allergyWarn = h('div');
@@ -504,9 +624,9 @@ views.record = function (opts) {
   root.appendChild(h('div', { class: 'card' },
     field('การดูแล (เลือกได้หลายข้อ)', chipGroup(state.settings.care, f.care_types, true, function (s) {
       f.care_types = s;
-      if (s.indexOf('ให้ยา') !== -1 && f.medicines.length === 0) { f.medicines.push({ medicine_name: '', quantity: '1', unit: 'เม็ด' }); renderMeds(); }
+      if (s.indexOf('ให้ยา') !== -1 && f.medicines.length === 0) { f.medicines.push(newMed()); renderMeds(); }
     }, 'การดูแล')),
-    h('div', { class: 'field' }, h('div', { class: 'label', text: 'ยาที่ให้' }), medList, medBox, allergyWarn)));
+    h('div', { class: 'field' }, h('div', { class: 'label', text: 'ยาที่ให้' }), medBox, allergyWarn)));
   renderMeds();
 
   /* 5) ผลการจัดการ */
@@ -542,6 +662,8 @@ views.record = function (opts) {
     saveBtn));
 
   function save() {
+    if (f.temperature) { var tn = Number(normTemp(f.temperature)); if (!isFinite(tn) || tn < 30 || tn > 45) { toast('อุณหภูมิไม่ถูกต้อง ใส่ระหว่าง 30–45 องศา', true); tempInput.focus(); return; } }
+    if (f.student && !editing && !f.temperature) { toast('กรุณาใส่อุณหภูมิร่างกาย', true); tempInput.focus(); tempInput.scrollIntoView({ block: 'center', behavior: 'smooth' }); return; }
     if (!f.student) { toast('กรุณาเลือกนักเรียน', true); var cg = document.querySelector('#view-record .class-grid'); if (cg) cg.scrollIntoView({ block: 'center', behavior: 'smooth' }); return; }
     if (!f.symptoms.length && !f.symptom_note.trim()) { toast('กรุณาเลือกหรือระบุอาการอย่างน้อย 1 อย่าง', true); return; }
     if (!f.visit_date || !f.time_in) { toast('กรุณาระบุวันที่และเวลาเข้า', true); return; }
@@ -557,6 +679,7 @@ views.record = function (opts) {
       api('apiSaveVisit', {
         visit_id: editing ? editing.visit_id : '',
         student_id: f.student.student_id, visit_date: f.visit_date, time_in: f.time_in, time_out: f.time_out,
+        temperature: normTemp(f.temperature || ''),
         symptoms: f.symptoms, symptom_note: f.symptom_note, care_types: f.care_types, medicines: meds,
         outcome: f.outcome, referral_place: f.referral_place, note: f.note
       }).then(function (v) {
@@ -647,8 +770,7 @@ views.report = function () {
     h('div', { class: 'grid-2' }, field('ตั้งแต่วันที่', fromI), field('ถึงวันที่', toI)),
     h('div', { class: 'btn-row' },
       h('button', { type: 'button', class: 'btn primary', text: 'ดูรายงาน', onclick: run }),
-      h('button', { type: 'button', class: 'btn', text: 'ส่งออก PDF', onclick: exportReportPdf }),
-      h('button', { type: 'button', class: 'btn', text: 'พิมพ์รายงาน', onclick: function () { window.print(); } }))));
+      h('button', { type: 'button', class: 'btn', text: 'ส่งออก PDF', onclick: exportReportPdf }))));
   root.appendChild(out);
 
   function run() {
@@ -660,16 +782,22 @@ views.report = function () {
   run();
 };
 
-function bars(items, emptyText) {
+function fmtNum(n) { n = Number(n) || 0; return n % 1 === 0 ? String(n) : n.toFixed(1); }
+/** แท่งกราฟ: แถวหัวบอกหน่วย (ครั้ง); total = แสดง % ของจำนวนครั้งทั้งหมด (เฉพาะหมวดที่รวมกันได้ 100%) */
+function bars(items, emptyText, labelHeader, total) {
   if (!items.length) return h('div', { class: 'empty', text: emptyText || 'ไม่มีข้อมูล' });
   var max = items[0].count;
   items.forEach(function (i) { if (i.count > max) max = i.count; });
-  return h('div', { class: 'bars' }, items.map(function (i) {
-    return h('div', { class: 'bar-row' },
-      h('span', { text: i.label }),
-      h('div', { class: 'bar-track', 'aria-hidden': 'true' }, h('div', { class: 'bar-fill', style: 'width:' + Math.max(2, Math.round(i.count / max * 100)) + '%' })),
-      h('span', { class: 'n', text: String(i.count) }));
-  }));
+  var cls = 'bar-row' + (total ? ' with-pct' : '');
+  return h('div', { class: 'bars' },
+    h('div', { class: cls + ' bar-head' }, h('span', { text: labelHeader || '' }), h('span'), h('span', { class: 'n', text: 'ครั้ง' }), total ? h('span', { class: 'pct', text: 'ร้อยละ' }) : null),
+    items.map(function (i) {
+      return h('div', { class: cls },
+        h('span', { text: i.label }),
+        h('div', { class: 'bar-track', 'aria-hidden': 'true' }, h('div', { class: 'bar-fill', style: 'width:' + Math.max(2, Math.round(i.count / max * 100)) + '%' })),
+        h('span', { class: 'n', text: String(i.count) }),
+        total ? h('span', { class: 'pct', text: Math.round(i.count / total * 100) + '%' }) : null);
+    }));
 }
 function table(headers, rows, numCols) {
   numCols = numCols || [];
@@ -679,7 +807,9 @@ function table(headers, rows, numCols) {
       return h('tr', {}, r.map(function (c, i) { return h('td', { class: numCols.indexOf(i) !== -1 ? 'num' : '', text: String(c) }); }));
     }))));
 }
-function section(title, content) { return h('div', { class: 'card' }, h('h3', { style: 'margin-bottom:10px', text: title }), content); }
+function section(title, content, note, cls) {
+  return h('div', { class: 'card report-card ' + (cls || '') }, h('h3', { text: title }), content, note ? h('p', { class: 'muted small note', text: note }) : null);
+}
 
 /* ---------- ส่งออกรายงานเป็น PDF (สร้างในเบราว์เซอร์ ไม่ต้องขอสิทธิ์ Drive เพิ่ม) ---------- */
 var HTML2PDF_URL = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
@@ -712,7 +842,7 @@ function exportReportPdf() {
       image: { type: 'jpeg', quality: 0.95 },
       html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
       jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-      pagebreak: { mode: ['css', 'legacy'], avoid: ['.card', '.stat', 'tr'] }
+      pagebreak: { mode: ['css', 'legacy'], before: '.pdf-break', avoid: ['.report-row', '.stats', 'tr', '.report-card > h3', '.sign-block'] }
     }).from(sheet).save().then(function () {
       document.body.removeChild(holder);
     }, function (e) { document.body.removeChild(holder); throw e; });
@@ -732,30 +862,35 @@ function renderReport(out, d) {
     h('div', { text: 'ระหว่างวันที่ ' + thDate(d.from, true) + ' ถึง ' + thDate(d.to, true) })));
   out.appendChild(h('h2', { class: 'no-print', style: 'margin-bottom:12px', text: 'สรุป ' + thDate(d.from) + ' – ' + thDate(d.to) }));
   out.appendChild(h('div', { class: 'stats' },
-    statCard(d.total, 'ครั้งที่มาใช้บริการ', 'accent'),
-    statCard(d.uniqueStudents, 'จำนวนนักเรียน (คน)'),
-    statCard(d.sentHomeCount, 'ผู้ปกครองรับกลับ'),
-    statCard(d.referredCount, 'ส่งต่อสถานพยาบาล', d.referredCount ? 'danger' : '')));
+    statCard(d.total, 'มาใช้บริการ', 'accent', 'ครั้ง'),
+    statCard(d.uniqueStudents, 'นักเรียนที่มา (ไม่นับซ้ำ)', '', 'คน'),
+    statCard(d.sentHomeCount, 'ผู้ปกครองรับกลับบ้าน', '', 'ครั้ง'),
+    statCard(d.referredCount, 'ส่งต่อสถานพยาบาล', d.referredCount ? 'danger' : '', 'ครั้ง')));
   if (!d.total) { out.appendChild(h('div', { class: 'card empty', text: 'ไม่มีการบันทึกในช่วงวันที่นี้' })); return; }
-  out.appendChild(h('div', { class: 'report-grid' },
-    section('อาการที่พบ', bars(d.bySymptom)),
-    section('แยกตามระดับชั้น', bars(d.byGrade)),
-    section('ผลการจัดการ', bars(d.byOutcome)),
-    section('การดูแลที่ให้', bars(d.byCare, 'ไม่ได้ระบุการดูแล'))));
-  out.appendChild(section('ยาที่ใช้', d.medicines.length
-    ? table(['ชื่อยา', 'จำนวนครั้ง', 'ปริมาณรวม'], d.medicines.map(function (m) { return [m.label, m.count, m.quantity ? m.quantity + ' ' + m.unit : '-']; }), [1, 2])
-    : h('div', { class: 'empty', text: 'ไม่มีการให้ยา' })));
+  // จัดเป็นแถวละ 2 การ์ด เพื่อให้ PDF ตัดหน้าระหว่างแถว ไม่ตัดกลางการ์ด
+  function row(a, b) { return h('div', { class: 'report-grid report-row' }, a, b); }
+  out.appendChild(row(
+    section('อาการที่พบ', bars(d.bySymptom, null, 'อาการ'), '1 ครั้งเลือกได้หลายอาการ ผลรวมจึงอาจมากกว่าจำนวนครั้งที่มา'),
+    section('อุณหภูมิร่างกาย', bars(d.byTemperature || [], 'ไม่มีข้อมูลอุณหภูมิ', 'ช่วงอุณหภูมิ (°C)', d.total))));
+  out.appendChild(row(
+    section('แยกตามระดับชั้น', bars(d.byGrade, null, 'ระดับชั้น', d.total)),
+    section('ผลการจัดการ', bars(d.byOutcome, null, 'ผลการจัดการ', d.total))));
+  out.appendChild(row(
+    section('การดูแลที่ให้', bars(d.byCare, 'ไม่ได้ระบุการดูแล', 'การดูแล'), '1 ครั้งอาจได้รับการดูแลหลายอย่าง'),
+    section('ยาที่ใช้', d.medicines.length
+      ? table(['ชื่อยา', 'ให้ (ครั้ง)', 'รวม'], d.medicines.map(function (m) { return [m.label, m.count, m.quantity ? fmtNum(m.quantity) + ' ' + (m.unit || '') : '-']; }), [1, 2])
+      : h('div', { class: 'empty', text: 'ไม่มีการให้ยา' }))));
   out.appendChild(section('รายการส่งต่อ / ผู้ปกครองรับกลับ (' + d.referrals.length + ')', d.referrals.length
-    ? table(['วันที่', 'นักเรียน', 'ชั้น', 'อาการ', 'การจัดการ'], d.referrals.map(function (r) {
-      return [thDate(r.visit_date) + ' ' + r.time_in, r.student_name, classLabel(r.grade, r.room), r.symptoms,
+    ? table(['วันที่ เวลา', 'นักเรียน', 'ชั้น', 'อุณหภูมิ (°C)', 'อาการ', 'การจัดการ'], d.referrals.map(function (r) {
+      return [thDate(r.visit_date) + ' ' + r.time_in, r.student_name, classLabel(r.grade, r.room), r.temperature || '-', r.symptoms,
         r.outcome + (r.referral_place ? ' (' + r.referral_place + ')' : '')];
-    }))
+    }), [3])
     : h('div', { class: 'empty', text: 'ไม่มีการส่งต่อ' })));
   if (d.frequent.length) {
-    out.appendChild(section('นักเรียนที่มาบ่อย (3 ครั้งขึ้นไป)', table(['นักเรียน', 'ชั้น', 'จำนวนครั้ง'],
+    out.appendChild(section('นักเรียนที่มาบ่อย (3 ครั้งขึ้นไป)', table(['นักเรียน', 'ชั้น', 'มา (ครั้ง)'],
       d.frequent.map(function (p) { return [p.student_name, classLabel(p.grade, p.room), p.count]; }), [2])));
   }
-  out.appendChild(h('div', { class: 'print-only', style: 'margin-top:40px;text-align:right' },
+  out.appendChild(h('div', { class: 'print-only sign-block', style: 'margin-top:32px;text-align:right' },
     h('p', { text: 'ลงชื่อ ........................................................' }),
     h('p', { text: '(........................................................)' }),
     h('p', { text: 'ครูผู้รับผิดชอบงานห้องพยาบาล' }),
@@ -1027,12 +1162,16 @@ document.querySelectorAll('.nav button').forEach(function (b) {
 });
 api('apiBootstrap').then(function (d) {
   state.settings = d.settings;
+  state.medicineUnits = d.medicineUnits || {};
+  state.tempFever = d.tempFever || 37.5;
+  state.tempHighFever = d.tempHighFever || 39;
   state.today = d.today;
   state.schoolName = d.schoolName;
   state.outcomeNeedsParent = d.outcomeNeedsParent;
   state.outcomeReferral = d.outcomeReferral;
   setStudents(d.students);
   $('topDate').textContent = thDate(d.today, true);
+  if (d.schoolName) $('topSchool').textContent = d.schoolName;
   $('boot').classList.add('hidden');
   go(d.students.length ? 'home' : 'students');
 }).catch(function (e) {

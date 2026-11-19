@@ -17,6 +17,8 @@
     --radius: 12px;
     --shadow: 0 1px 3px rgba(16, 32, 56, .08), 0 4px 12px rgba(16, 32, 56, .05);
     --nav-h: 64px;
+    --top-h: 60px;
+    --radius-sm: 10px;
   }
   * { box-sizing: border-box; }
   html { -webkit-text-size-adjust: 100%; }
@@ -40,10 +42,18 @@
   .topbar {
     position: sticky; top: 0; z-index: 20;
     display: flex; align-items: center; justify-content: space-between; gap: 12px;
-    padding: 10px 16px;
-    background: var(--brand); color: #fff;
+    min-height: var(--top-h); padding: 8px 16px;
+    background: linear-gradient(135deg, var(--brand) 0%, #2b88dd 100%); color: #fff;
+    box-shadow: 0 2px 8px rgba(18, 88, 156, .18);
   }
-  .topbar h1 { font-size: 1.1rem; font-weight: 700; }
+  .topbar .brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .topbar .logo {
+    flex: 0 0 auto; width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center;
+    background: rgba(255, 255, 255, .18);
+  }
+  .topbar .logo svg { width: 22px; height: 22px; }
+  .topbar h1 { font-size: 1.1rem; font-weight: 700; line-height: 1.2; }
+  .topbar .school { display: block; font-size: .85rem; font-weight: 400; opacity: .92; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .topbar .date { font-size: .9rem; opacity: .9; white-space: nowrap; }
   .nav {
     position: fixed; bottom: 0; left: 0; right: 0; z-index: 20;
@@ -62,7 +72,7 @@
 
   @media (min-width: 900px) {
     .nav {
-      position: sticky; top: 52px; bottom: auto; height: auto;
+      position: sticky; top: var(--top-h); bottom: auto; height: auto;
       display: flex; justify-content: center; gap: 4px; padding: 6px;
       border-top: 0; border-bottom: 1px solid var(--line);
     }
@@ -75,13 +85,21 @@
   /* ---------- การ์ด / ส่วนต่าง ๆ ---------- */
   .card {
     background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow);
+    border: 1px solid var(--line);
     padding: 16px; margin-bottom: 16px;
   }
+  .card-head h2, .report-card h3 { position: relative; padding-left: 12px; }
+  .card-head h2::before, .report-card h3::before {
+    content: ''; position: absolute; left: 0; top: .2em; bottom: .2em; width: 4px; border-radius: 4px; background: var(--brand);
+  }
+  .report-card h3 { margin-bottom: 10px; }
+  .report-card .note { margin: 10px 0 0; }
   .card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
   .stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 16px; }
   @media (min-width: 700px) { .stats { grid-template-columns: repeat(4, 1fr); } }
-  .stat { background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow); padding: 14px 16px; }
-  .stat .num { font-size: 2rem; font-weight: 700; line-height: 1.1; }
+  .stat { background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow); border: 1px solid var(--line); padding: 14px 16px; }
+  .stat .num { font-size: 2rem; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; }
+  .stat .num .unit { font-size: 1rem; font-weight: 600; color: var(--muted); }
   .stat .label { color: var(--muted); font-size: .95rem; }
   .stat.accent .num { color: var(--brand); }
   .stat.warn .num { color: var(--warn); }
@@ -95,7 +113,8 @@
     background: var(--surface); cursor: pointer; font-weight: 600; text-decoration: none;
   }
   .btn:hover { border-color: var(--brand); }
-  .btn.primary { background: var(--brand); border-color: var(--brand); color: #fff; }
+  .btn.primary { background: var(--brand); border-color: var(--brand); color: #fff; box-shadow: 0 2px 6px rgba(26, 115, 200, .25); }
+  .btn.ghost { background: transparent; border-color: transparent; color: var(--brand-dark); text-decoration: underline; }
   .btn.primary:hover { background: var(--brand-dark); }
   .btn.danger { color: var(--danger); border-color: #efc2bd; }
   .btn.small { min-height: 40px; padding: 6px 12px; font-size: .95rem; }
@@ -220,6 +239,26 @@
   /* ---------- รายงาน ---------- */
   .bars { display: grid; gap: 8px; }
   .bar-row { display: grid; grid-template-columns: minmax(110px, 32%) 1fr 44px; gap: 10px; align-items: center; }
+  .bar-row.with-pct { grid-template-columns: minmax(110px, 30%) 1fr 40px 56px; }
+  .bar-row .pct { text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .bar-head { font-size: .85rem; color: var(--muted); font-weight: 600; padding-bottom: 4px; border-bottom: 1px solid var(--line); }
+  .bar-head .n { font-weight: 600; }
+  .bar-head span { white-space: nowrap; }
+
+  /* อุณหภูมิ */
+  .temp-wrap { display: flex; align-items: center; gap: 10px; max-width: 240px; }
+  .temp-wrap .temp-input { font-size: 1.7rem; font-weight: 700; text-align: center; min-height: 58px; }
+  .temp-unit { font-size: 1.4rem; font-weight: 700; color: var(--muted); }
+  .temp-ok { margin-top: 6px; color: var(--brand-dark); font-weight: 600; }
+
+  /* ยาที่ให้ */
+  .med-item { border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 12px; margin-bottom: 10px; background: #f8fbff; }
+  .med-top { display: flex; gap: 8px; align-items: center; }
+  .med-top select { flex: 1; }
+  .med-qty { display: flex; align-items: center; gap: 8px; margin: 10px 0; }
+  .step-btn { width: 48px; height: 48px; border-radius: var(--radius-sm); border: 1px solid #b6c6d8; background: #fff; font-size: 1.4rem; font-weight: 700; cursor: pointer; color: var(--brand-dark); }
+  .med-qty .qty-input { width: 84px; text-align: center; font-weight: 700; font-size: 1.15rem; }
+  .modal-scroll { max-height: 55vh; overflow: auto; }
   .bar-track { background: #e9eff6; border-radius: 6px; height: 14px; overflow: hidden; }
   .bar-fill { background: var(--brand); height: 100%; border-radius: 6px; }
   .bar-row .n { text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
@@ -229,6 +268,8 @@
   td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   .table-wrap { overflow-x: auto; }
   .report-grid { display: grid; gap: 16px; }
+  .report-row { margin-bottom: 16px; align-items: start; }
+  .report-row > .card { margin-bottom: 0; }
   @media (min-width: 800px) { .report-grid { grid-template-columns: 1fr 1fr; } }
   .print-only { display: none; }
 
@@ -264,6 +305,10 @@
   .pdf-holder { position: absolute; left: -12000px; top: 0; width: 718px; background: #fff; }
   .pdf-sheet { width: 718px; background: #fff; font-size: 14px; color: #111; }
   .pdf-sheet .bar-row { grid-template-columns: 130px 1fr 36px; }
+  .pdf-sheet .bar-row.with-pct { grid-template-columns: 128px 1fr 30px 46px; }
+  .pdf-sheet .report-row { margin-bottom: 12px; }
+  .pdf-sheet .report-card h3::before, .pdf-sheet .card-head h2::before { display: none; }
+  .pdf-sheet .report-card h3 { padding-left: 0; }
   .pdf-sheet table { font-size: 12.5px; }
   .pdf-sheet .print-only { display: block; }
   .pdf-sheet .no-print { display: none !important; }

@@ -52,7 +52,7 @@ function buildReport_(from, to) {
       return {
         visit_date: v.visit_date, time_in: v.time_in, student_name: v.student_name,
         grade: v.grade, room: v.room, symptoms: v.symptoms.concat(v.symptom_note ? [v.symptom_note] : []).join(', '),
-        outcome: v.outcome, referral_place: v.referral_place
+        outcome: v.outcome, referral_place: v.referral_place, temperature: v.temperature
       };
     });
 
@@ -72,11 +72,23 @@ function buildReport_(from, to) {
       .sort(function (a, b) { return a.label < b.label ? -1 : 1; }),
     byOutcome: countBy_(visits, function (v) { return v.outcome || 'ยังไม่ระบุ'; }),
     byCare: countBy_(visits, function (v) { return v.care_types; }),
+    feverCount: visits.filter(function (v) { return v.temperature && Number(v.temperature) >= TEMP_FEVER; }).length,
+    byTemperature: ['ปกติ (ต่ำกว่า ' + TEMP_FEVER + ')', 'มีไข้ (' + TEMP_FEVER + '–' + (TEMP_HIGH_FEVER - 0.1).toFixed(1) + ')',
+      'ไข้สูง (' + TEMP_HIGH_FEVER + ' ขึ้นไป)', 'ไม่ได้วัด'].map(function (label, i) {
+      return { label: label, count: visits.filter(function (v) { return tempBand_(v.temperature) === i; }).length };
+    }).filter(function (x) { return x.count > 0; }),
     byDate: byDate,
     medicines: medicines,
     frequent: frequent,
     referrals: referrals
   };
+}
+
+/** 0 = ปกติ, 1 = มีไข้, 2 = ไข้สูง, 3 = ไม่ได้วัด */
+function tempBand_(t) {
+  if (!t || !isFinite(Number(t))) return 3;
+  var n = Number(t);
+  return n >= TEMP_HIGH_FEVER ? 2 : n >= TEMP_FEVER ? 1 : 0;
 }
 
 function apiReport(from, to) {

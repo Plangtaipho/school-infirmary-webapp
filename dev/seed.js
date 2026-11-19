@@ -17,7 +17,7 @@ function seed(gas) {
           student_id: String(36001 + n),
           prefix: male ? (junior ? 'ด.ช.' : 'นาย') : (junior ? 'ด.ญ.' : 'นางสาว'),
           first_name: (male ? FIRST_M : FIRST_F)[n % 10],
-          last_name: LAST[(n * 3) % 10],
+          last_name: LAST[(n + Math.floor(n / 10)) % 10], // ไม่ซ้ำกันทั้งชื่อและนามสกุล
           grade, room: String(room),
           drug_allergy: n % 13 === 2 ? 'พาราเซตามอล' : n % 17 === 5 ? 'เพนิซิลลิน' : '',
           chronic_disease: n % 11 === 3 ? 'หอบหืด' : n % 19 === 7 ? 'ภูมิแพ้อากาศ' : '',
@@ -46,20 +46,21 @@ function seed(gas) {
       const giveMed = rnd(3) > 0 && !s.drug_allergy;
       const hh = 8 + rnd(7);
       const outcome = outcomes[rnd(outcomes.length)];
+      const temperature = sym[0] === 'ไข้' ? (37.6 + rnd(17) / 10).toFixed(1) : (36.3 + rnd(9) / 10).toFixed(1);
       gas.apiSaveVisit({
         student_id: s.student_id, visit_date: date,
         time_in: `${String(hh).padStart(2, '0')}:${String(rnd(6) * 10).padStart(2, '0')}`,
         time_out: `${String(hh + 1).padStart(2, '0')}:00`,
-        symptoms: sym, care_types: giveMed ? ['ให้นอนพัก', 'ให้ยา'] : ['ให้นอนพัก'],
+        temperature, symptoms: sym, care_types: giveMed ? ['ให้นอนพัก', 'ให้ยา'] : ['ให้นอนพัก'],
         medicines: giveMed ? [{ medicine_name: sym[0] === 'ปวดท้อง' ? 'ยาธาตุน้ำขาว' : 'พาราเซตามอล 500 มก.', quantity: 1, unit: sym[0] === 'ปวดท้อง' ? 'ช้อนชา' : 'เม็ด' }] : [],
         outcome, referral_place: outcome === 'ส่งต่อ รพ.สต.' ? 'รพ.สต.บ้านหนองแวง' : outcome === 'ส่งต่อโรงพยาบาล' ? 'โรงพยาบาลจังหวัด' : ''
       });
     }
   }
   // วันนี้: 2 คนยังพักอยู่ 1 คนกลับเข้าเรียนแล้ว
-  gas.apiSaveVisit({ student_id: '36005', visit_date: today, time_in: '08:20', time_out: '09:00', symptoms: ['ปวดท้อง'], care_types: ['ให้ยา'], medicines: [{ medicine_name: 'ยาธาตุน้ำขาว', quantity: 1, unit: 'ช้อนชา' }], outcome: 'กลับเข้าเรียน' });
-  gas.apiSaveVisit({ student_id: '36012', visit_date: today, time_in: '09:05', symptoms: ['ไข้', 'ปวดศีรษะ'], symptom_note: 'ไข้ 38.2', care_types: ['ให้นอนพัก', 'เช็ดตัวลดไข้'] });
-  gas.apiSaveVisit({ student_id: '36030', visit_date: today, time_in: '09:40', symptoms: ['เวียนศีรษะ'], care_types: ['ให้นอนพัก', 'วัดไข้/วัดความดัน'] });
+  gas.apiSaveVisit({ student_id: '36005', visit_date: today, time_in: '08:20', time_out: '09:00', temperature: '36.8', symptoms: ['ปวดท้อง'], care_types: ['ให้ยา'], medicines: [{ medicine_name: 'ยาธาตุน้ำขาว', quantity: 1, unit: 'ช้อนชา' }], outcome: 'กลับเข้าเรียน' });
+  gas.apiSaveVisit({ student_id: '36012', visit_date: today, time_in: '09:05', temperature: '38.2', symptoms: ['ไข้', 'ปวดศีรษะ'], care_types: ['ให้นอนพัก', 'เช็ดตัวลดไข้'] });
+  gas.apiSaveVisit({ student_id: '36030', visit_date: today, time_in: '09:40', temperature: '36.9', symptoms: ['เวียนศีรษะ'], care_types: ['ให้นอนพัก', 'วัดไข้/วัดความดัน'] });
 }
 
 module.exports = { seed };

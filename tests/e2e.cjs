@@ -52,23 +52,48 @@ async function newPage(browser, viewport) {
   check('เลือกห้องแล้วแสดงรายชื่อเฉพาะห้องนั้น (4 คน)', (await page.locator('.name-btn').count()) === 4);
   await page.click('.name-btn:has-text("กิตติพงษ์")');
   check('แสดงแถบเตือนแพ้ยาเมื่อเลือกนักเรียน', await page.locator('.alert.danger:has-text("แพ้ยา")').isVisible());
+  check('มีช่องอุณหภูมิ (°C) ในหน้าบันทึก', await page.locator('#tempInput').isVisible() && await page.locator('.temp-unit:has-text("°C")').isVisible());
   await page.click('.chip:has-text("ปวดศีรษะ")');
+  await page.click('.sticky-actions .btn.primary');
+  check('ไม่ใส่อุณหภูมิจะไม่บันทึก', await page.locator('.toast.error:has-text("กรุณาใส่อุณหภูมิร่างกาย")').isVisible());
+  await page.fill('#tempInput', '385');
+  await page.locator('#tempInput').blur();
+  check('พิมพ์ 385 แปลงเป็น 38.5 และเตือนมีไข้', (await page.inputValue('#tempInput')) === '38.5' && await page.locator('.alert.warn:has-text("มีไข้ 38.5")').isVisible());
+  await page.fill('#tempInput', '50');
+  check('อุณหภูมินอกช่วง 30–45 แจ้งเตือน', await page.locator('.error-text:has-text("30–45")').isVisible());
+  await page.fill('#tempInput', '37.8');
   await page.click('.chip:has-text("ให้ยา")');
-  await page.fill('input[list=medList]', 'พาราเซตามอล 500 มก.');
-  await page.locator('input[list=medList]').blur();
+  await page.selectOption('.med-name', 'ยาธาตุน้ำขาว');
+  check('เลือกยาน้ำแล้วหน่วยเป็น "ช้อนชา" อัตโนมัติ', await page.locator('.med-item .chip.on:has-text("ช้อนชา"), .med-item .chip[aria-pressed=true]:has-text("ช้อนชา")').count() === 1);
+  await page.selectOption('.med-name', 'พาราเซตามอล 500 มก.');
+  check('เลือกยาเม็ดแล้วหน่วยเป็น "เม็ด"', await page.locator('.med-item .chip.on:has-text("เม็ด"), .med-item .chip[aria-pressed=true]:has-text("เม็ด")').count() === 1);
+  await page.click('.step-btn[aria-label="เพิ่มจำนวน"]');
+  check('ปุ่ม + เพิ่มจำนวนทีละครึ่ง', (await page.inputValue('.qty-input')) === '1.5');
   check('เตือนเมื่อเลือกยาที่แพ้', await page.locator('text=ระวัง! นักเรียนแพ้ยา').isVisible());
   await page.screenshot({ path: path.join(OUT, 'mobile-02-record-allergy.png'), fullPage: true });
   await page.click('.sticky-actions .btn.primary');
   check('ยืนยันอีกครั้งก่อนบันทึกยาที่แพ้', await page.locator('.modal:has-text("ยืนยันว่าจะบันทึก")').isVisible());
   await page.click('.modal button:has-text("ยกเลิก")');
-  // เปลี่ยนเป็นยาอื่นแล้วบันทึก
-  await page.fill('input[list=medList]', 'ยาดม');
-  await page.locator('input[list=medList]').blur();
+  // เพิ่มยาชนิดใหม่ที่ไม่มีในรายการ แล้วใช้ยานั้นแทน
+  await page.selectOption('.med-name', '__new__');
+  await page.fill('#medNameInput', 'ยาแก้ไอน้ำดำ');
+  await page.click('.modal .chip:has-text("ช้อนชา")');
+  await page.click('.modal button:has-text("บันทึก")');
+  await page.waitForSelector('.toast:has-text("เพิ่มยาแล้ว")');
+  check('เพิ่มยาชนิดใหม่ได้ และเลือกให้ทันทีพร้อมหน่วย', (await page.inputValue('.med-name')) === 'ยาแก้ไอน้ำดำ' && await page.locator('.med-item .chip.on:has-text("ช้อนชา"), .med-item .chip[aria-pressed=true]:has-text("ช้อนชา")').count() === 1);
   await page.click('.chip:has-text("ให้นอนพัก")');
   await page.click('.sticky-actions .btn.primary');
   await page.waitForSelector('#view-home:not(.hidden) .stats');
   check('บันทึกแล้วกลับหน้าวันนี้และมีคนพักเพิ่มเป็น 3', (await page.locator('#view-home button:has-text("ออกจากห้อง")').count()) === 3);
   check('เวลาเข้าที่เลือก (13:45) ถูกบันทึกแบบ HH:mm', await page.locator('#view-home :text("เข้า 13:45")').first().isVisible());
+  check('หน้าแรกแสดงอุณหภูมิของนักเรียน', await page.locator('#view-home .item:has-text("13:45"):has-text("37.8")').first().isVisible());
+  check('หัวเว็บแสดงชื่อโรงเรียน', ((await page.textContent('#topSchool')) || '').includes('โรงเรียน'));
+  // ยาใหม่ยังอยู่ในรายการเมื่อเปิดหน้าบันทึกใหม่
+  await page.click('.nav button[data-view=record]');
+  await page.click('.chip:has-text("ให้ยา")');
+  check('ยาที่เพิ่มใหม่อยู่ในรายการยาถาวร', (await page.locator('.med-name option[value="ยาแก้ไอน้ำดำ"]').count()) === 1);
+  await page.click('.nav button[data-view=home]');
+  await page.waitForSelector('#view-home:not(.hidden) .stats');
 
   // ลงเวลาออก: ผู้ปกครองรับกลับ
   await page.locator('.item:has-text("ปวดศีรษะ")').first().locator('text=ออกจากห้อง').click().catch(async () => {
@@ -118,6 +143,10 @@ async function newPage(browser, viewport) {
   await page.waitForSelector('#view-report .bars');
   await page.screenshot({ path: path.join(OUT, 'mobile-06-report.png'), fullPage: true });
   check('รายงานแสดงกราฟอาการ', (await page.locator('#view-report .bar-row').count()) > 3);
+  check('รายงาน: ไม่มีปุ่มพิมพ์รายงาน', (await page.locator('#view-report button:has-text("พิมพ์")').count()) === 0);
+  check('รายงาน: หัวกราฟบอกหน่วย "ครั้ง" และ "ร้อยละ"', (await page.locator('#view-report .bar-head:has-text("ครั้ง")').count()) >= 4 && (await page.locator('#view-report .bar-head:has-text("ร้อยละ")').count()) >= 2);
+  check('รายงาน: ตัวเลขสรุปมีหน่วย', (await page.locator('#view-report .stat .unit').count()) === 4);
+  check('รายงาน: มีหัวข้ออุณหภูมิร่างกาย', await page.locator('#view-report h3:has-text("อุณหภูมิ")').isVisible());
 
   // นักเรียน: นำเข้า CSV
   await page.click('.nav button[data-view=students]');
@@ -164,6 +193,7 @@ async function newPage(browser, viewport) {
     await p.page.click('.nav button[data-view=record]');
     await p.page.click('.class-chip:has-text("ม.4/1")');
     await p.page.click('.name-btn >> nth=0');
+    await p.page.fill('#tempInput', '36.7');
     await p.page.screenshot({ path: path.join(OUT, name + '-02-record.png'), fullPage: true });
     await p.page.click('.nav button[data-view=report]');
     await p.page.waitForSelector('#view-report .bars');
@@ -174,11 +204,6 @@ async function newPage(browser, viewport) {
       await dl.saveAs(pdfPath);
       const buf = fs.readFileSync(pdfPath);
       check(name + ': ส่งออก PDF ได้ไฟล์ ' + dl.suggestedFilename(), buf.slice(0, 4).toString() === '%PDF' && buf.length > 20000);
-    }
-    if (name === 'desktop') {
-      await p.page.emulateMedia({ media: 'print' });
-      await p.page.pdf({ path: path.join(OUT, 'report-print.pdf'), format: 'A4', printBackground: true });
-      await p.page.emulateMedia({ media: 'screen' });
     }
     const overflow = await p.page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
     check(name + ': ไม่มีการเลื่อนแนวนอน', !overflow);

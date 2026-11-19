@@ -42,8 +42,9 @@ ${safe(seedSrc)}
   setupSheets();
   var rt = function (fn) { return function () { var a = JSON.parse(JSON.stringify([].slice.call(arguments))); return JSON.parse(JSON.stringify(fn.apply(null, a))); }; };
   seed({ apiImportStudents: rt(apiImportStudents), apiSaveVisit: rt(apiSaveVisit), todayText_: todayText_, DEFAULT_SETTINGS: DEFAULT_SETTINGS });
-  updateRow_(SHEETS.SETTINGS, readTable_(SHEETS.SETTINGS).filter(function (r) { return r.list_type === 'school_name'; })[0]._row,
-    { list_type: 'school_name', value: 'โรงเรียนตัวอย่างวิทยา', sort_order: '1' });
+  // DEMO_SCHOOL=ชื่อปลอม ใช้ตอนทำภาพโฆษณา (ไม่ระบุชื่อโรงเรียนลูกค้า) — ไม่ใส่ = ใช้ชื่อเริ่มต้นใน Config.gs
+  if (${JSON.stringify(process.env.DEMO_SCHOOL || '')}) updateRow_(SHEETS.SETTINGS, readTable_(SHEETS.SETTINGS).filter(function (r) { return r.list_type === 'school_name'; })[0]._row,
+    { list_type: 'school_name', value: ${JSON.stringify(process.env.DEMO_SCHOOL || '')}, sort_order: '1' });
   var API = {};
   Object.getOwnPropertyNames(window).forEach(function (k) { if (/^api[A-Z]/.test(k) && typeof window[k] === 'function') API[k] = rt(window[k]); });
   function runner(ok, fail) {

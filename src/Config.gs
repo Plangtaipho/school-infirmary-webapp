@@ -24,10 +24,10 @@ var COLUMNS = {
   Visits: [
     'visit_id', 'visit_date', 'time_in', 'time_out', 'student_id', 'student_name',
     'grade', 'room', 'symptoms', 'symptom_note', 'care_types', 'outcome',
-    'referral_place', 'note', 'status', 'created_at', 'updated_at'
+    'referral_place', 'note', 'status', 'created_at', 'updated_at', 'temperature'
   ],
   VisitMedicines: ['visit_id', 'medicine_name', 'quantity', 'unit'],
-  Settings: ['list_type', 'value', 'sort_order'],
+  Settings: ['list_type', 'value', 'sort_order', 'unit'],
   ErrorLog: ['timestamp', 'code', 'function_name', 'message']
 };
 
@@ -44,8 +44,9 @@ var HEADER_NOTES = {
   symptoms: 'อาการที่เลือก', symptom_note: 'อาการอื่น/รายละเอียด', care_types: 'การดูแล',
   outcome: 'ผลการจัดการ', referral_place: 'สถานที่ส่งต่อ', note: 'หมายเหตุ',
   status: 'ปกติ / ยกเลิก (รายการที่ยกเลิกไม่นับในรายงาน)', created_at: 'บันทึกเมื่อ',
-  medicine_name: 'ชื่อยา', quantity: 'จำนวน', unit: 'หน่วย',
-  list_type: 'ประเภทตัวเลือก: symptom=อาการ, care=การดูแล, medicine=ยา, outcome=ผลการจัดการ, school_name=ชื่อโรงเรียน',
+  medicine_name: 'ชื่อยา', quantity: 'จำนวน', unit: 'หน่วย (ในแท็บ Settings = หน่วยเริ่มต้นของยานั้น)',
+  temperature: 'อุณหภูมิร่างกาย (องศาเซลเซียส)',
+  list_type: 'ประเภทตัวเลือก: symptom=อาการ, care=การดูแล, medicine=ยา, unit=หน่วยยา, outcome=ผลการจัดการ, school_name=ชื่อโรงเรียน',
   value: 'ข้อความที่แสดงในหน้าเว็บ (เพิ่ม/แก้/ลบแถวได้)', sort_order: 'ลำดับการแสดง (เลขน้อยขึ้นก่อน)',
   timestamp: 'เวลาที่เกิดข้อผิดพลาด', code: 'รหัสข้อผิดพลาด', function_name: 'ฟังก์ชัน', message: 'รายละเอียดสำหรับผู้ดูแลระบบ'
 };
@@ -59,7 +60,15 @@ var SHEET_STYLE = {
   ErrorLog: { tab: '#9aa5a3', widths: { timestamp: 150, code: 160, function_name: 140, message: 420 } }
 };
 
-var LIST_TYPES = ['symptom', 'care', 'medicine', 'outcome'];
+var LIST_TYPES = ['symptom', 'care', 'medicine', 'unit', 'outcome'];
+
+var DEFAULT_SCHOOL_NAME = 'โรงเรียนหนองสวรรค์วิทยาคาร';
+
+// อุณหภูมิ: ช่วงที่รับได้ และเกณฑ์มีไข้ (องศาเซลเซียส)
+var TEMP_MIN = 30;
+var TEMP_MAX = 45;
+var TEMP_FEVER = 37.5;
+var TEMP_HIGH_FEVER = 39;
 
 // ผลการจัดการที่นับว่าเป็น "ส่งต่อ" หรือ "กลับบ้าน" (ใช้ในรายงานและการถามแจ้งผู้ปกครอง)
 var OUTCOME_NEEDS_PARENT = ['ผู้ปกครองรับกลับบ้าน', 'ส่งต่อ รพ.สต.', 'ส่งต่อโรงพยาบาล'];
@@ -76,5 +85,13 @@ var DEFAULT_SETTINGS = {
     'พาราเซตามอล 500 มก.', 'พาราเซตามอลน้ำ (เด็ก)', 'ยาธาตุน้ำขาว', 'ผงเกลือแร่ (ORS)',
     'ยาแก้แพ้ คลอร์เฟนิรามีน', 'ยาหม่อง', 'ยาดม', 'เบตาดีน', 'แอลกอฮอล์ล้างแผล', 'คาลาไมน์'
   ],
+  unit: ['เม็ด', 'ช้อนชา', 'ซีซี', 'ซอง', 'ครั้ง (ทา/ดม)', 'แผ่น'],
   outcome: ['กลับเข้าเรียน', 'ผู้ปกครองรับกลับบ้าน', 'ส่งต่อ รพ.สต.', 'ส่งต่อโรงพยาบาล', 'อื่น ๆ']
+};
+
+// หน่วยเริ่มต้นของยาแต่ละตัว (เลือกยาแล้วระบบเลือกหน่วยให้ ครูเปลี่ยนได้)
+var DEFAULT_MEDICINE_UNITS = {
+  'พาราเซตามอล 500 มก.': 'เม็ด', 'พาราเซตามอลน้ำ (เด็ก)': 'ช้อนชา', 'ยาธาตุน้ำขาว': 'ช้อนชา',
+  'ผงเกลือแร่ (ORS)': 'ซอง', 'ยาแก้แพ้ คลอร์เฟนิรามีน': 'เม็ด', 'ยาหม่อง': 'ครั้ง (ทา/ดม)',
+  'ยาดม': 'ครั้ง (ทา/ดม)', 'เบตาดีน': 'ครั้ง (ทา/ดม)', 'แอลกอฮอล์ล้างแผล': 'ครั้ง (ทา/ดม)', 'คาลาไมน์': 'ครั้ง (ทา/ดม)'
 };

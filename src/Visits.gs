@@ -53,6 +53,12 @@ function validateVisit_(input, student) {
   if (input.time_out && input.time_out < input.time_in) {
     throw appError_('ERR-VISIT-TIME', 'เวลาออกต้องไม่ก่อนเวลาเข้า');
   }
+  if (input.temperature !== '') {
+    var t = Number(input.temperature);
+    if (!/^\d{2}(\.\d)?$/.test(input.temperature) || t < TEMP_MIN || t > TEMP_MAX) {
+      throw appError_('ERR-VISIT-TEMP', 'อุณหภูมิไม่ถูกต้อง กรุณาใส่ระหว่าง ' + TEMP_MIN + '–' + TEMP_MAX + ' องศา เช่น 37.5');
+    }
+  }
   if (input.symptoms.length === 0 && !input.symptom_note) {
     throw appError_('ERR-VISIT-SYMPTOM', 'กรุณาเลือกหรือระบุอาการอย่างน้อย 1 อย่าง');
   }
@@ -71,8 +77,19 @@ function normalizeVisitInput_(input) {
     medicines: cleanMedicines_(input.medicines),
     outcome: cleanText_(input.outcome, 50),
     referral_place: cleanText_(input.referral_place, 200),
-    note: cleanText_(input.note)
+    note: cleanText_(input.note),
+    temperature: cleanTemp_(input.temperature)
   };
+}
+
+/** "37,5" / " 37.50 " / 375 → "37.5" (ปัดทศนิยม 1 ตำแหน่ง) ว่าง → "" */
+function cleanTemp_(v) {
+  var s = String(v === undefined || v === null ? '' : v).trim().replace(',', '.');
+  if (s === '') return '';
+  var n = Number(s);
+  if (!isFinite(n)) return s.slice(0, 10);
+  if (n >= 300 && n <= 450) n = n / 10;   // พิมพ์ 375 หมายถึง 37.5
+  return (Math.round(n * 10) / 10).toFixed(1);
 }
 
 /** เพิ่มรายการใหม่ (ไม่มี visit_id) หรือแก้ไขรายการเดิม (มี visit_id) */
@@ -101,6 +118,7 @@ function apiSaveVisit(rawInput) {
         outcome: input.outcome,
         referral_place: input.referral_place,
         note: input.note,
+        temperature: input.temperature,
         status: STATUS_ACTIVE,
         updated_at: now
       };
@@ -196,6 +214,7 @@ function publicVisit_(v, meds) {
     outcome: v.outcome || '',
     referral_place: v.referral_place || '',
     note: v.note || '',
+    temperature: v.temperature || '',
     status: v.status || STATUS_ACTIVE
   };
 }

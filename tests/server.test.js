@@ -43,7 +43,7 @@ test('setupSheets สร้างชีตครบและเติมตั�
   assert.equal(b.data.settings.outcome.length, 5);
   assert.equal(g.__ss.getSheetByName('Settings').getLastRow() - 1,
     Object.values(g.DEFAULT_SETTINGS).reduce((n, a) => n + a.length, 0) + 1);
-  assert.equal(b.data.schoolName, 'โรงเรียน');
+  assert.equal(b.data.schoolName, 'โรงเรียนหนองสวรรค์วิทยาคาร');
 });
 
 test('นำเข้านักเรียน: ตัด .0 จากเลขประจำตัว และอัปเดตโดยไม่ลบข้อมูลสุขภาพเดิม', () => {
@@ -206,4 +206,48 @@ test('migration: ชีตเก่าที่ไม่มีคอลัมน
   const header = sh.getRange(1, 1, 1, sh.getLastColumn()).getDisplayValues()[0];
   assert.deepEqual(header.slice(0, 4), ['student_id', 'prefix', 'first_name', 'last_name']);
   assert.equal(g.apiBootstrap().data.students[0].first_name, 'ก');
+});
+
+test('อุณหภูมิ: เก็บเป็นทศนิยม 1 ตำแหน่ง, ตรวจช่วง, และรายงานแยกมีไข้/ไข้สูง', () => {
+  const g = setup();
+  assert.equal(visit(g, { temperature: '37,8' }).data.temperature, '37.8');
+  assert.equal(visit(g, { temperature: 375 }).data.temperature, '37.5');
+  assert.equal(visit(g, { temperature: '39.2' }).data.temperature, '39.2');
+  assert.equal(visit(g, { temperature: '36.6' }).data.temperature, '36.6');
+  assert.equal(visit(g, {}).data.temperature, '');
+  assert.equal(visit(g, { temperature: '25' }).code, 'ERR-VISIT-TEMP');
+  assert.equal(visit(g, { temperature: 'สูง' }).code, 'ERR-VISIT-TEMP');
+  const rep = g.apiReport('2026-11-01', '2026-11-30').data;
+  assert.equal(rep.feverCount, 3);
+  const band = Object.fromEntries(rep.byTemperature.map(x => [x.label.split(' ')[0], x.count]));
+  assert.deepEqual(band, { 'ปกติ': 1, 'มีไข้': 2, 'ไข้สูง': 1, 'ไม่ได้วัด': 1 });
+});
+
+test('รายการยา: มีหน่วยเริ่มต้น, เพิ่มยาใหม่, แก้หน่วย, เอาออกจากรายการ', () => {
+  const g = setup();
+  const b = g.apiBootstrap().data;
+  assert.equal(b.medicineUnits['ยาหม่อง'], 'ครั้ง (ทา/ดม)');
+  assert.ok(b.settings.unit.includes('ช้อนชา'));
+  let r = g.apiSaveMedicine('ยาแก้ไอน้ำดำ', 'ช้อนชา');
+  assert.equal(r.ok, true);
+  assert.equal(r.data.medicineUnits['ยาแก้ไอน้ำดำ'], 'ช้อนชา');
+  assert.equal(r.data.settings.medicine.at(-1), 'ยาแก้ไอน้ำดำ');
+  r = g.apiSaveMedicine('ยาแก้ไอน้ำดำ', 'ซีซี');
+  assert.equal(r.data.medicineUnits['ยาแก้ไอน้ำดำ'], 'ซีซี');
+  assert.equal(r.data.settings.medicine.filter(m => m === 'ยาแก้ไอน้ำดำ').length, 1);
+  assert.equal(g.apiSaveMedicine('  ', 'เม็ด').code, 'ERR-MED-NAME');
+  r = g.apiRemoveMedicine('ยาแก้ไอน้ำดำ');
+  assert.equal(r.data.settings.medicine.includes('ยาแก้ไอน้ำดำ'), false);
+});
+
+test('migration: ชีต Settings เดิม (ไม่มีหน่วยยา) ได้รายการหน่วยและหน่วยเริ่มต้นของยา', () => {
+  const g = createGas({ now: NOW });
+  g.setupSheets();
+  const sh = g.__ss.getSheetByName('Settings');
+  // จำลองชีตรุ่นก่อน: ไม่มีคอลัมน์ unit และไม่มีแถว unit
+  sh.data = sh.data.filter((r, i) => i === 0 || r[0] !== 'unit').map(r => r.slice(0, 3));
+  g.setupIfNeeded_();
+  const b = g.apiBootstrap().data;
+  assert.equal(b.settings.unit.length, g.DEFAULT_SETTINGS.unit.length);
+  assert.equal(b.medicineUnits['ผงเกลือแร่ (ORS)'], 'ซอง');
 });
