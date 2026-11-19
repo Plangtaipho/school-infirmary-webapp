@@ -836,16 +836,19 @@ function exportReportPdf() {
     renderReport(sheet, d);
     var holder = h('div', { class: 'pdf-holder', 'aria-hidden': 'true' }, sheet);
     document.body.appendChild(holder);
+    // ถ้าหน้าเว็บเลื่อนลงอยู่ html2canvas จะเว้นที่ว่างด้านบนและตัดขอบขวา จึงเลื่อนกลับบนสุดก่อน
+    var keepY = window.scrollY;
+    window.scrollTo(0, 0);
     return html2pdf().set({
       margin: [10, 10, 12, 10],
       filename: 'infirmary-report_' + d.from + '_' + d.to + '.pdf',
       image: { type: 'jpeg', quality: 0.95 },
-      html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
+      html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff', scrollX: 0, scrollY: 0 },
       jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
       pagebreak: { mode: ['css', 'legacy'], before: '.pdf-break', avoid: ['.report-row', '.stats', 'tr', '.report-card > h3', '.sign-block'] }
     }).from(sheet).save().then(function () {
-      document.body.removeChild(holder);
-    }, function (e) { document.body.removeChild(holder); throw e; });
+      document.body.removeChild(holder); window.scrollTo(0, keepY);
+    }, function (e) { document.body.removeChild(holder); window.scrollTo(0, keepY); throw e; });
   }).then(function () {
     setLoading(false); toast('ดาวน์โหลด PDF แล้ว');
   }).catch(function (e) {
@@ -939,7 +942,7 @@ function studentModal(s) {
   var body = h('div', {},
     field('เลขประจำตัวนักเรียน', inp('student_id', { disabled: !isNew, inputmode: 'numeric' }), true),
     h('div', { class: 'grid-3' }, field('คำนำหน้า', inp('prefix')), field('ชื่อ', inp('first_name'), true), field('นามสกุล', inp('last_name'))),
-    h('div', { class: 'grid-2' }, field('ชั้น', inp('grade', { placeholder: 'เช่น ม.1' })), field('ห้อง', inp('room'))),
+    h('div', { class: 'grid-2' }, field('ชั้น', h('select', { onchange: function (e) { d.grade = e.target.value; } }, h('option', { value: '', text: '— เลือกชั้น —' }), ['ม.1', 'ม.2', 'ม.3', 'ม.4', 'ม.5', 'ม.6'].concat(d.grade && !/^ม\.[1-6]$/.test(d.grade) ? [d.grade] : []).map(function (g) { return h('option', { value: g, text: g, selected: g === d.grade }); }))), field('ห้อง', inp('room'))),
     field('แพ้ยา', inp('drug_allergy', { placeholder: 'เช่น เพนิซิลลิน, ไอบูโพรเฟน (เว้นว่างถ้าไม่แพ้)' })),
     field('โรคประจำตัว', inp('chronic_disease', { placeholder: 'เช่น หอบหืด, ลมชัก' })),
     field('เบอร์โทรผู้ปกครอง', inp('parent_phone', { type: 'tel', inputmode: 'tel' })));

@@ -25,6 +25,13 @@ function publicStudent_(s) {
   };
 }
 
+/** "1", "ม1", "ม. 1", "มัธยมศึกษาปีที่ 1" → "ม.1" (ให้รายงานแยกชั้นได้ถูกต้อง) */
+function normGrade_(v) {
+  var s = cleanText_(v, 30);
+  var m = s.match(/^(?:ม\.?|มัธยมศึกษาปีที่|ม\.ศ\.?)?\s*(\d{1,2})$/);
+  return m ? 'ม.' + Number(m[1]) : s;
+}
+
 function cleanText_(v, max) {
   if (v === undefined || v === null) return '';
   return String(v).replace(/\s+/g, ' ').trim().slice(0, max || MAX_TEXT);
@@ -70,7 +77,7 @@ function apiImportStudents(rows, deactivateMissing) {
           prefix: cleanText_(r.prefix, 30),
           first_name: first,
           last_name: cleanText_(r.last_name, 100),
-          grade: cleanText_(r.grade, 30),
+          grade: normGrade_(r.grade),
           room: cleanText_(r.room, 10),
           chronic_disease: cleanText_(r.chronic_disease),
           drug_allergy: cleanText_(r.drug_allergy),
@@ -125,7 +132,7 @@ function apiSaveStudent(input) {
         prefix: cleanText_(input.prefix, 30),
         first_name: first,
         last_name: cleanText_(input.last_name, 100),
-        grade: cleanText_(input.grade, 30),
+        grade: normGrade_(input.grade),
         room: cleanText_(input.room, 10),
         chronic_disease: cleanText_(input.chronic_disease),
         drug_allergy: cleanText_(input.drug_allergy),

@@ -251,3 +251,13 @@ test('migration: ชีต Settings เดิม (ไม่มีหน่วย
   assert.equal(b.settings.unit.length, g.DEFAULT_SETTINGS.unit.length);
   assert.equal(b.medicineUnits['ผงเกลือแร่ (ORS)'], 'ซอง');
 });
+
+test('ชั้นที่พิมพ์เป็นตัวเลขถูกแปลงเป็น ม.x', () => {
+  const g = createGas({ now: NOW });
+  g.setupSheets();
+  ['1', 'ม1', 'ม. 2', 'มัธยมศึกษาปีที่ 3', 'ม.4'].forEach((x, i) => assert.equal(g.normGrade_(x), ['ม.1', 'ม.1', 'ม.2', 'ม.3', 'ม.4'][i]));
+  assert.equal(g.normGrade_('ป.6'), 'ป.6');
+  g.apiSaveStudent({ isNew: true, student_id: '20001', first_name: 'ทดสอบ', grade: '5', room: '1' });
+  const s = g.readTable_(g.SHEETS.STUDENTS).find(r => r.student_id === '20001');
+  assert.equal(s.grade, 'ม.5');
+});
