@@ -347,7 +347,8 @@ function checkoutModal(v) {
   }
   renderExtra();
   var body = h('div', {},
-    h('p', { class: 'muted', text: v.student_name + ' · เข้า ' + v.time_in + ' · ออก ' + nowTime() }),
+    h('p', { class: 'muted', text: v.student_name + ' · เข้า ' + v.time_in + ' น.' }),
+    h('div', { class: 'alert ok' }, h('strong', { text: 'เวลาออก ' + nowTime() + ' น.' }), ' ระบบลงเวลาให้อัตโนมัติเมื่อกดบันทึก'),
     field('ผลการจัดการ', chipGroup(state.settings.outcome, outcome ? [outcome] : [], false, function (s) { outcome = s[0] || ''; renderExtra(); }, 'ผลการจัดการ'), true),
     extra);
   openModal('ลงเวลาออกจากห้องพยาบาล', body, [
@@ -355,7 +356,7 @@ function checkoutModal(v) {
     { label: 'บันทึกเวลาออก', kind: 'primary', onClick: function (close) {
       if (!outcome) { toast('กรุณาเลือกผลการจัดการ', true); return false; }
       api('apiCheckout', v.visit_id, outcome, referral).then(function () {
-        close(); toast('บันทึกเวลาออกแล้ว'); if (state.view === 'home') views.home();
+        close(); toast('บันทึกเวลาออกแล้ว'); if (state.view === 'home' || state.view === 'history') views[state.view]();
       }).catch(showError);
       return false;
     } }
@@ -366,7 +367,7 @@ function visitDetailModal(v) {
   var meds = v.medicines.map(function (m) { return m.medicine_name + (m.quantity ? ' ' + m.quantity + ' ' + (m.unit || '') : ''); });
   var rows = [
     ['วันที่', thDate(v.visit_date, true)],
-    ['เวลา', v.time_in + ' – ' + (v.time_out || 'ยังไม่ออก')],
+    ['เวลา', v.time_in + ' น. – ' + (v.time_out ? v.time_out + ' น.' : 'ยังอยู่ในห้องพยาบาล')],
     ['นักเรียน', v.student_name + ' (' + v.student_id + ')'],
     ['ชั้น', classLabel(v.grade, v.room)],
     ['อาการ', v.symptoms.concat(v.symptom_note ? [v.symptom_note] : []).join(', ') || '-'],
@@ -389,7 +390,8 @@ function visitDetailModal(v) {
           api('apiVoidVisit', v.visit_id).then(function () { toast('ยกเลิกรายการแล้ว'); go(state.view); }).catch(showError);
         });
     } });
-    actions.push({ label: 'แก้ไข', kind: 'primary', onClick: function (close) { close(); go('record', { visit: v }); } });
+    actions.push({ label: 'แก้ไข', kind: v.time_out ? 'primary' : '', onClick: function (close) { close(); go('record', { visit: v }); } });
+    if (!v.time_out) actions.push({ label: 'ออกจากห้อง', kind: 'primary', onClick: function (close) { close(); checkoutModal(v); } });
   }
   openModal('รายละเอียดการเข้าห้องพยาบาล', dl, actions);
 }
@@ -597,8 +599,8 @@ views.history = function () {
   qInput.addEventListener('input', function (e) { clearTimeout(qTimer); qTimer = setTimeout(function () { flt.q = e.target.value; load(); }, 400); });
   root.appendChild(h('div', { class: 'card' },
     h('div', { class: 'filters' },
-      field('ตั้งแต่วันที่', input('date', 'from')),
-      field('ถึงวันที่', input('date', 'to')),
+      field('ตั้งแต่วันที่', thDateInput(flt.from, function (v) { flt.from = v; load(); })),
+      field('ถึงวันที่', thDateInput(flt.to, function (v) { flt.to = v; load(); })),
       field('ค้นหา', qInput),
       field('ชั้น', select('grade', gradeOptions(), 'ทุกชั้น')),
       field('ผลการจัดการ', select('outcome', state.settings.outcome, 'ทั้งหมด')))));

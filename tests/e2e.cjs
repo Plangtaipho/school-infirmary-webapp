@@ -81,6 +81,17 @@ async function newPage(browser, viewport) {
   await page.waitForSelector('.toast:has-text("บันทึกเวลาออกแล้ว")');
   await page.waitForTimeout(300);
   check('ลงเวลาออกแล้วเหลือคนพัก 2 คน', (await page.locator('#view-home button:has-text("ออกจากห้อง")').count()) === 2);
+  // ออกจากห้องจากหน้ารายละเอียด (ประวัติ) ก็ลงเวลาอัตโนมัติ
+  await page.click('.nav button[data-view=history]');
+  await page.locator('#view-history .item:has-text("อยู่ในห้องพยาบาล")').first().click();
+  await page.click('.modal button:text-is("ออกจากห้อง")');
+  check('รายละเอียด → ออกจากห้อง เปิดหน้าลงเวลาออกพร้อมเวลาอัตโนมัติ', await page.locator('.modal .alert.ok:has-text("เวลาออก")').isVisible());
+  await page.click('.modal .chip:has-text("กลับเข้าเรียน")');
+  await page.click('.modal button:has-text("บันทึกเวลาออก")');
+  await page.waitForSelector('.toast:has-text("บันทึกเวลาออกแล้ว")');
+  await page.click('.nav button[data-view=home]');
+  await page.waitForSelector('#view-home:not(.hidden) .stats');
+  check('ลงเวลาออกจากหน้าประวัติแล้วเหลือคนพัก 1 คน', (await page.locator('#view-home button:has-text("ออกจากห้อง")').count()) === 1);
 
   // ไม่เลือกนักเรียนแล้วกดบันทึก → แจ้งเตือน
   await page.click('.nav button[data-view=record]');
@@ -93,6 +104,7 @@ async function newPage(browser, viewport) {
   await page.screenshot({ path: path.join(OUT, 'mobile-04-history.png'), fullPage: false });
   await page.locator('#view-history .item').first().click();
   check('เปิดรายละเอียดรายการได้', await page.locator('.modal:has-text("เลขที่รายการ")').isVisible());
+  check('ประวัติ: ช่องวันที่แสดงเป็นภาษาไทย', /25\d\d$/.test((await page.textContent('#view-history .th-date .th-shown')).trim()));
   await page.screenshot({ path: path.join(OUT, 'mobile-05-detail.png') });
   await page.click('.modal button:has-text("แก้ไข")');
   check('เปิดหน้าแก้ไขรายการได้', await page.locator('#view-record h2:has-text("แก้ไขรายการ")').isVisible());
