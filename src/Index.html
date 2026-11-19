@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ระบบบันทึกห้องพยาบาล</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap" rel="stylesheet">
+  <?!= include('Styles'); ?>
+</head>
+<body>
+  <header class="topbar">
+    <h1>ห้องพยาบาล</h1>
+    <span class="date" id="topDate"></span>
+  </header>
+
+  <nav class="nav" aria-label="เมนูหลัก">
+    <button type="button" data-view="home" aria-current="page">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/></svg>
+      <span>วันนี้</span>
+    </button>
+    <button type="button" data-view="record">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg>
+      <span>บันทึก</span>
+    </button>
+    <button type="button" data-view="history">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+      <span>ประวัติ</span>
+    </button>
+    <button type="button" data-view="report">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M5 20V10M12 20V4M19 20v-7"/></svg>
+      <span>รายงาน</span>
+    </button>
+    <button type="button" data-view="students">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.5 3.4-5.5 6.5-5.5s5.7 2 6.5 5.5"/><path d="M16 4.5a3.5 3.5 0 010 7M18 14.8c1.8.8 3 2.6 3.5 5.2"/></svg>
+      <span>นักเรียน</span>
+    </button>
+  </nav>
+
+  <main id="app">
+    <div class="boot" id="boot">
+      <div class="spinner" style="margin:0 auto 16px"></div>
+      กำลังโหลดข้อมูล...
+    </div>
+    <section id="view-home" class="hidden" aria-label="ภาพรวมวันนี้"></section>
+    <section id="view-record" class="hidden" aria-label="บันทึกการเข้าห้องพยาบาล"></section>
+    <section id="view-history" class="hidden" aria-label="ประวัติ"></section>
+    <section id="view-report" class="hidden" aria-label="รายงาน"></section>
+    <section id="view-students" class="hidden" aria-label="รายชื่อนักเรียน"></section>
+  </main>
+
+  <div id="modalRoot"></div>
+  <div id="toastRoot" aria-live="polite"></div>
+  <div id="loading" class="loading hidden" aria-hidden="true"><div class="spinner"></div></div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
+  <?!= include('App'); ?>
+</body>
+</html>

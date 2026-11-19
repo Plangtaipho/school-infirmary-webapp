@@ -1,0 +1,870 @@
+<script>
+/* ============================================================
+ * App.html — JavaScript ฝั่งหน้าเว็บ
+ * - สร้าง DOM ด้วย h() และใส่ข้อความด้วย textContent เท่านั้น (กัน XSS)
+ * - เรียกเซิร์ฟเวอร์ผ่าน api() ซึ่งห่อ google.script.run เป็น Promise
+ * ============================================================ */
+'use strict';
+
+/* ---------- state ---------- */
+var state = {
+  settings: { symptom: [], care: [], medicine: [], outcome: [] },
+  students: [],
+  studentById: {},
+  outcomeNeedsParent: [],
+  outcomeReferral: [],
+  today: '',
+  view: 'home',
+  editVisit: null,     // visit ที่กำลังแก้ไข (null = บันทึกใหม่)
+  historyFilter: null,
+  reportRange: null
+};
+
+/* ---------- utilities ---------- */
+function h(tag, attrs) {
+  var el = document.createElement(tag);
+  attrs = attrs || {};
+  Object.keys(attrs).forEach(function (k) {
+    var v = attrs[k];
+    if (v === null || v === undefined || v === false) return;
+    if (k === 'class') el.className = v;
+    else if (k === 'text') el.textContent = v;
+    else if (k.indexOf('on') === 0 && typeof v === 'function') el.addEventListener(k.slice(2), v);
+    else if (k === 'value') el.value = v;
+    else if (k === 'checked') el.checked = !!v;
+    else el.setAttribute(k, v === true ? '' : v);
+  });
+  for (var i = 2; i < arguments.length; i++) append(el, arguments[i]);
+  return el;
+}
+function append(el, child) {
+  if (child === null || child === undefined || child === false) return;
+  if (Array.isArray(child)) { child.forEach(function (c) { append(el, c); }); return; }
+  el.appendChild(typeof child === 'string' || typeof child === 'number' ? document.createTextNode(String(child)) : child);
+}
+function clear(el) { while (el.firstChild) el.removeChild(el.firstChild); return el; }
+function $(id) { return document.getElementById(id); }
+
+var TH_MONTHS = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+var TH_MONTHS_FULL = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
+function thDate(iso, full) {
+  if (!iso) return '';
+  var p = iso.split('-');
+  var m = Number(p[1]) - 1;
+  return Number(p[2]) + ' ' + (full ? TH_MONTHS_FULL[m] : TH_MONTHS[m]) + ' ' + (Number(p[0]) + 543);
+}
+function isoDate(d) {
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+function nowTime() {
+  var d = new Date();
+  return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+}
+function studentName(s) { return [s.prefix, s.first_name, s.last_name].filter(Boolean).join(' '); }
+function classLabel(grade, room) { return grade ? grade + (room ? '/' + room : '') : ''; }
+
+/* ---------- เรียกเซิร์ฟเวอร์ ---------- */
+var pending = 0;
+function setLoading(on) {
+  pending += on ? 1 : -1;
+  $('loading').classList.toggle('hidden', pending <= 0);
+}
+function api(name) {
+  var args = Array.prototype.slice.call(arguments, 1);
+  setLoading(true);
+  return new Promise(function (resolve, reject) {
+    google.script.run
+      .withSuccessHandler(function (res) {
+        setLoading(false);
+        if (res && res.ok) resolve(res.data);
+        else {
+          var err = new Error((res && res.message) || 'เกิดข้อผิดพลาด');
+          err.code = res && res.code;
+          reject(err);
+        }
+      })
+      .withFailureHandler(function (e) {
+        setLoading(false);
+        var err = new Error('เชื่อมต่อไม่สำเร็จ กรุณาตรวจสอบอินเทอร์เน็ตแล้วลองใหม่');
+        err.code = 'ERR-NETWORK';
+        err.detail = e && e.message;
+        reject(err);
+      })[name].apply(null, args);
+  });
+}
+function showError(err) {
+  toast((err.message || 'เกิดข้อผิดพลาด') + (err.code ? ' (' + err.code + ')' : ''), true);
+}
+
+/* ---------- toast / modal ---------- */
+var toastTimer;
+function toast(msg, isError) {
+  var root = clear($('toastRoot'));
+  root.appendChild(h('div', { class: 'toast' + (isError ? ' error' : ''), role: isError ? 'alert' : 'status', text: msg }));
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(function () { clear(root); }, isError ? 6000 : 3000);
+}
+function openModal(title, body, actions) {
+  var root = $('modalRoot');
+  var prevFocus = document.activeElement;
+  function close() { clear(root); document.removeEventListener('keydown', onKey); if (prevFocus && prevFocus.focus) prevFocus.focus(); }
+  function onKey(e) { if (e.key === 'Escape') close(); }
+  var modal = h('div', { class: 'modal', role: 'dialog', 'aria-modal': 'true', 'aria-label': title },
+    h('h2', { text: title }), body,
+    h('div', { class: 'actions' }, (actions || []).map(function (a) {
+      return h('button', {
+        type: 'button', class: 'btn ' + (a.kind || ''), text: a.label,
+        onclick: function () { if (a.onClick) { var r = a.onClick(close); if (r === false) return; } else close(); }
+      });
+    }))
+  );
+  var backdrop = h('div', { class: 'modal-backdrop', onclick: function (e) { if (e.target === backdrop) close(); } }, modal);
+  clear(root).appendChild(backdrop);
+  document.addEventListener('keydown', onKey);
+  var first = modal.querySelector('input, select, textarea, button');
+  if (first) first.focus();
+  return close;
+}
+function confirmModal(title, message, okLabel, kind) {
+  return new Promise(function (resolve) {
+    openModal(title, h('p', { style: 'white-space:pre-line', text: message }), [
+      { label: 'ยกเลิก', onClick: function (close) { close(); resolve(false); } },
+      { label: okLabel || 'ยืนยัน', kind: kind || 'primary', onClick: function (close) { close(); resolve(true); } }
+    ]);
+  });
+}
+
+/* ---------- ส่วนประกอบที่ใช้ซ้ำ ---------- */
+function chipGroup(options, selected, multi, onChange, label) {
+  var sel = selected.slice();
+  var wrap = h('div', { class: 'chips', role: 'group', 'aria-label': label || '' });
+  function render() {
+    clear(wrap);
+    options.forEach(function (opt) {
+      wrap.appendChild(h('button', {
+        type: 'button', class: 'chip', 'aria-pressed': sel.indexOf(opt) !== -1 ? 'true' : 'false', text: opt,
+        onclick: function () {
+          var i = sel.indexOf(opt);
+          if (multi) { if (i === -1) sel.push(opt); else sel.splice(i, 1); }
+          else sel = i === -1 ? [opt] : [];
+          render();
+          onChange(sel.slice());
+        }
+      }));
+    });
+  }
+  render();
+  return wrap;
+}
+function field(label, input, required, hint) {
+  return h('div', { class: 'field' },
+    h('label', {}, label, required ? h('span', { class: 'req', text: ' *' }) : null),
+    input,
+    hint ? h('div', { class: 'muted small', text: hint }) : null);
+}
+function statCard(num, label, kind) {
+  return h('div', { class: 'stat ' + (kind || '') }, h('div', { class: 'num', text: String(num) }), h('div', { class: 'label', text: label }));
+}
+function outcomeBadge(v) {
+  if (!v.time_out && !v.outcome) return h('span', { class: 'badge warn', text: 'อยู่ในห้องพยาบาล' });
+  if (!v.outcome) return h('span', { class: 'badge', text: 'ออกแล้ว' });
+  var kind = state.outcomeReferral.indexOf(v.outcome) !== -1 ? 'danger'
+    : v.outcome === 'ผู้ปกครองรับกลับบ้าน' ? 'info' : 'ok';
+  return h('span', { class: 'badge ' + kind, text: v.outcome });
+}
+function healthAlerts(s) {
+  var out = [];
+  if (s.drug_allergy) out.push(h('div', { class: 'alert danger' }, h('strong', { text: 'แพ้ยา' }), s.drug_allergy));
+  if (s.chronic_disease) out.push(h('div', { class: 'alert warn' }, h('strong', { text: 'โรคประจำตัว' }), s.chronic_disease));
+  return out;
+}
+
+/** ตรวจว่ายาที่เลือกตรงกับที่นักเรียนแพ้หรือไม่ (เทียบคำแบบง่าย ทั้งสองทิศทาง) */
+function allergyConflicts(student, medicines) {
+  if (!student || !student.drug_allergy) return [];
+  var tokens = student.drug_allergy.toLowerCase().split(/[,\/\s;]+/).filter(function (t) { return t.length >= 3; });
+  return medicines.filter(function (m) {
+    var name = (m.medicine_name || '').toLowerCase();
+    if (!name) return false;
+    return tokens.some(function (t) { return name.indexOf(t) !== -1 || t.indexOf(name.split(' ')[0]) !== -1; });
+  }).map(function (m) { return m.medicine_name; });
+}
+
+/** ค้นหานักเรียนจากเลขประจำตัวหรือชื่อ */
+function searchStudents(q, limit) {
+  q = (q || '').trim().toLowerCase();
+  if (!q) return [];
+  var out = [];
+  for (var i = 0; i < state.students.length && out.length < (limit || 8); i++) {
+    var s = state.students[i];
+    var hay = (s.student_id + ' ' + s.first_name + ' ' + s.last_name + ' ' + classLabel(s.grade, s.room)).toLowerCase();
+    if (hay.indexOf(q) !== -1) out.push(s);
+  }
+  return out;
+}
+
+function setStudents(list) {
+  state.students = list.slice().sort(function (a, b) {
+    return (a.grade + a.room).localeCompare(b.grade + b.room, 'th', { numeric: true }) ||
+      a.student_id.localeCompare(b.student_id, 'th', { numeric: true });
+  });
+  state.studentById = {};
+  state.students.forEach(function (s) { state.studentById[s.student_id] = s; });
+}
+
+/* ---------- การนำทาง ---------- */
+var views = {};
+function go(view, opts) {
+  state.view = view;
+  document.querySelectorAll('.nav button').forEach(function (b) {
+    if (b.dataset.view === view) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
+  });
+  ['home', 'record', 'history', 'report', 'students'].forEach(function (v) {
+    $('view-' + v).classList.toggle('hidden', v !== view);
+  });
+  window.scrollTo(0, 0);
+  views[view](opts || {});
+}
+
+/* ============================================================
+ * หน้า "วันนี้"
+ * ============================================================ */
+views.home = function () {
+  var root = clear($('view-home'));
+  root.appendChild(h('div', { class: 'empty', text: 'กำลังโหลด...' }));
+  api('apiToday').then(function (d) {
+    clear(root);
+    root.appendChild(h('div', { class: 'stats' },
+      statCard(d.count, 'มาห้องพยาบาลวันนี้', 'accent'),
+      statCard(d.inRoom.length, 'ยังอยู่ในห้องพยาบาล', d.inRoom.length ? 'warn' : ''),
+      statCard(d.sentHome, 'ผู้ปกครองรับกลับ'),
+      statCard(d.referred, 'ส่งต่อสถานพยาบาล', d.referred ? 'danger' : '')
+    ));
+    root.appendChild(h('button', { type: 'button', class: 'btn primary block', style: 'margin-bottom:16px;font-size:1.1rem', text: '+ บันทึกนักเรียนที่มาใหม่', onclick: function () { go('record'); } }));
+
+    var inRoomList = h('ul', { class: 'list' });
+    if (!d.inRoom.length) inRoomList.appendChild(h('li', { class: 'empty', text: 'ไม่มีนักเรียนพักอยู่ในห้องพยาบาล' }));
+    d.inRoom.forEach(function (v) {
+      inRoomList.appendChild(h('li', { class: 'item' },
+        h('div', {},
+          h('div', { class: 'title', text: v.student_name }),
+          h('div', { class: 'meta', text: classLabel(v.grade, v.room) + ' · เข้า ' + v.time_in + (v.visit_date !== d.today ? ' (' + thDate(v.visit_date) + ')' : '') + ' · ' + v.symptoms.concat(v.symptom_note ? [v.symptom_note] : []).join(', ') })),
+        h('button', { type: 'button', class: 'btn small primary', text: 'ออกจากห้อง', onclick: function () { checkoutModal(v); } })
+      ));
+    });
+    root.appendChild(h('div', { class: 'card' }, h('div', { class: 'card-head' }, h('h2', { text: 'อยู่ในห้องพยาบาลตอนนี้' })), inRoomList));
+
+    var todayList = h('ul', { class: 'list' });
+    if (!d.visits.length) todayList.appendChild(h('li', { class: 'empty', text: 'วันนี้ยังไม่มีการบันทึก' }));
+    d.visits.forEach(function (v) { todayList.appendChild(visitItem(v)); });
+    root.appendChild(h('div', { class: 'card' }, h('div', { class: 'card-head' }, h('h2', { text: 'รายการวันนี้' }), h('span', { class: 'muted', text: thDate(d.today) })), todayList));
+  }).catch(function (e) { clear(root).appendChild(h('div', { class: 'alert danger', text: e.message })); });
+};
+
+function visitItem(v) {
+  return h('li', { class: 'item clickable', tabindex: '0', role: 'button',
+    onclick: function () { visitDetailModal(v); },
+    onkeydown: function (e) { if (e.key === 'Enter') visitDetailModal(v); } },
+    h('div', {},
+      h('div', { class: 'title', text: v.student_name + (v.status === 'ยกเลิก' ? ' (ยกเลิกแล้ว)' : '') }),
+      h('div', { class: 'meta', text: thDate(v.visit_date) + ' ' + v.time_in + (v.time_out ? '–' + v.time_out : '') + ' · ' + classLabel(v.grade, v.room) }),
+      h('div', { class: 'meta', text: v.symptoms.concat(v.symptom_note ? [v.symptom_note] : []).join(', ') })),
+    outcomeBadge(v));
+}
+
+function checkoutModal(v) {
+  var outcome = v.outcome || '';
+  var referral = v.referral_place || '';
+  var notified = v.parent_notified;
+  var student = state.studentById[v.student_id];
+  var extra = h('div');
+  function renderExtra() {
+    clear(extra);
+    if (state.outcomeReferral.indexOf(outcome) !== -1) {
+      extra.appendChild(field('สถานที่ส่งต่อ', h('input', { type: 'text', value: referral, placeholder: 'เช่น รพ.สต.บ้านนา, โรงพยาบาลจังหวัด', oninput: function (e) { referral = e.target.value; } })));
+    }
+    if (state.outcomeNeedsParent.indexOf(outcome) !== -1) {
+      if (student && student.parent_phone) {
+        extra.appendChild(h('p', {}, 'เบอร์ผู้ปกครอง: ', h('a', { href: 'tel:' + student.parent_phone.replace(/[^\d+]/g, ''), text: student.parent_phone })));
+      }
+      extra.appendChild(h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: notified, onchange: function (e) { notified = e.target.checked; } }), 'แจ้งผู้ปกครองแล้ว'));
+    }
+  }
+  renderExtra();
+  var body = h('div', {},
+    h('p', { class: 'muted', text: v.student_name + ' · เข้า ' + v.time_in + ' · ออก ' + nowTime() }),
+    field('ผลการจัดการ', chipGroup(state.settings.outcome, outcome ? [outcome] : [], false, function (s) { outcome = s[0] || ''; renderExtra(); }, 'ผลการจัดการ'), true),
+    extra);
+  openModal('ลงเวลาออกจากห้องพยาบาล', body, [
+    { label: 'ยกเลิก' },
+    { label: 'บันทึกเวลาออก', kind: 'primary', onClick: function (close) {
+      if (!outcome) { toast('กรุณาเลือกผลการจัดการ', true); return false; }
+      api('apiCheckout', v.visit_id, outcome, referral, notified).then(function () {
+        close(); toast('บันทึกเวลาออกแล้ว'); if (state.view === 'home') views.home();
+      }).catch(showError);
+      return false;
+    } }
+  ]);
+}
+
+function visitDetailModal(v) {
+  var meds = v.medicines.map(function (m) { return m.medicine_name + (m.quantity ? ' ' + m.quantity + ' ' + (m.unit || '') : ''); });
+  var rows = [
+    ['วันที่', thDate(v.visit_date, true)],
+    ['เวลา', v.time_in + ' – ' + (v.time_out || 'ยังไม่ออก')],
+    ['นักเรียน', v.student_name + ' (' + v.student_id + ')'],
+    ['ชั้น', classLabel(v.grade, v.room)],
+    ['อาการ', v.symptoms.concat(v.symptom_note ? [v.symptom_note] : []).join(', ') || '-'],
+    ['การดูแล', v.care_types.join(', ') || '-'],
+    ['ยาที่ให้', meds.join(', ') || '-'],
+    ['ผลการจัดการ', v.outcome || '-'],
+    ['สถานที่ส่งต่อ', v.referral_place || '-'],
+    ['แจ้งผู้ปกครอง', v.parent_notified ? 'แจ้งแล้ว' : '-'],
+    ['หมายเหตุ', v.note || '-'],
+    ['เลขที่รายการ', v.visit_id + (v.status === 'ยกเลิก' ? ' (ยกเลิกแล้ว)' : '')]
+  ];
+  var dl = h('dl', { class: 'detail' });
+  rows.forEach(function (r) { dl.appendChild(h('dt', { text: r[0] })); dl.appendChild(h('dd', { text: r[1] })); });
+  var actions = [{ label: 'ปิด' }];
+  if (v.status !== 'ยกเลิก') {
+    actions.unshift({ label: 'ยกเลิกรายการนี้', kind: 'danger', onClick: function (close) {
+      close();
+      confirmModal('ยกเลิกรายการ?', 'รายการของ ' + v.student_name + ' จะไม่ถูกนับในรายงาน (ข้อมูลยังเก็บไว้ในชีต)', 'ยกเลิกรายการ', 'danger')
+        .then(function (ok) {
+          if (!ok) return;
+          api('apiVoidVisit', v.visit_id).then(function () { toast('ยกเลิกรายการแล้ว'); go(state.view); }).catch(showError);
+        });
+    } });
+    actions.push({ label: 'แก้ไข', kind: 'primary', onClick: function (close) { close(); go('record', { visit: v }); } });
+  }
+  openModal('รายละเอียดการเข้าห้องพยาบาล', dl, actions);
+}
+
+/* ============================================================
+ * หน้า "บันทึก"
+ * ============================================================ */
+views.record = function (opts) {
+  var editing = opts.visit || null;
+  var root = clear($('view-record'));
+  var f = editing ? {
+    student: state.studentById[editing.student_id] || {
+      student_id: editing.student_id, first_name: editing.student_name, last_name: '', prefix: '', grade: editing.grade, room: editing.room
+    },
+    visit_date: editing.visit_date, time_in: editing.time_in, time_out: editing.time_out,
+    symptoms: editing.symptoms.slice(), symptom_note: editing.symptom_note,
+    care_types: editing.care_types.slice(),
+    medicines: editing.medicines.map(function (m) { return { medicine_name: m.medicine_name, quantity: m.quantity, unit: m.unit }; }),
+    outcome: editing.outcome, referral_place: editing.referral_place, parent_notified: editing.parent_notified, note: editing.note
+  } : {
+    student: null, visit_date: state.today || isoDate(new Date()), time_in: nowTime(), time_out: '',
+    symptoms: [], symptom_note: '', care_types: [], medicines: [],
+    outcome: '', referral_place: '', parent_notified: false, note: ''
+  };
+
+  root.appendChild(h('h2', { style: 'margin-bottom:12px', text: editing ? 'แก้ไขรายการ ' + editing.visit_id : 'บันทึกการเข้าห้องพยาบาล' }));
+
+  /* 1) นักเรียน */
+  var studentBox = h('div');
+  function renderStudent() {
+    clear(studentBox);
+    if (f.student) {
+      studentBox.appendChild(h('div', { class: 'student-card' },
+        h('div', {},
+          h('div', { class: 'name', text: studentName(f.student) }),
+          h('div', { class: 'muted', text: 'เลขประจำตัว ' + f.student.student_id + ' · ชั้น ' + classLabel(f.student.grade, f.student.room) })),
+        editing ? null : h('button', { type: 'button', class: 'btn small', text: 'เปลี่ยน', onclick: function () { f.student = null; renderStudent(); renderOutcomeExtra(); } })));
+      append(studentBox, healthAlerts(f.student));
+      return;
+    }
+    var input = h('input', { type: 'search', id: 'studentSearch', placeholder: 'พิมพ์ชื่อ หรือเลขประจำตัวนักเรียน', autocomplete: 'off', 'aria-autocomplete': 'list' });
+    var list = h('ul', { class: 'suggest hidden', role: 'listbox' });
+    input.addEventListener('input', function () {
+      var res = searchStudents(input.value, 8);
+      clear(list);
+      list.classList.toggle('hidden', !input.value.trim());
+      if (!res.length) { list.appendChild(h('li', { class: 'empty small', text: state.students.length ? 'ไม่พบนักเรียน' : 'ยังไม่มีรายชื่อนักเรียน กรุณานำเข้าที่เมนู "นักเรียน"' })); return; }
+      res.forEach(function (s) {
+        list.appendChild(h('li', { role: 'option' }, h('button', { type: 'button', onclick: function () { f.student = s; renderStudent(); renderOutcomeExtra(); } },
+          h('span', {}, studentName(s), s.drug_allergy ? h('span', { class: 'badge danger', style: 'margin-left:6px', text: 'แพ้ยา' }) : null),
+          h('span', { class: 'muted', text: classLabel(s.grade, s.room) + ' · ' + s.student_id }))));
+      });
+    });
+    studentBox.appendChild(h('div', { class: 'search-wrap' }, input, list));
+    setTimeout(function () { input.focus(); }, 0);
+  }
+  renderStudent();
+  root.appendChild(h('div', { class: 'card' }, h('div', { class: 'field', style: 'margin:0' }, h('div', { class: 'label' }, 'นักเรียน', h('span', { class: 'req', text: ' *' })), studentBox)));
+
+  /* 2) เวลา */
+  root.appendChild(h('div', { class: 'card' },
+    h('div', { class: 'grid-3' },
+      field('วันที่', h('input', { type: 'date', value: f.visit_date, onchange: function (e) { f.visit_date = e.target.value; } }), true),
+      field('เวลาเข้า', h('input', { type: 'time', value: f.time_in, onchange: function (e) { f.time_in = e.target.value; } }), true),
+      field('เวลาออก', h('input', { type: 'time', value: f.time_out, onchange: function (e) { f.time_out = e.target.value; } }), false, 'เว้นว่างได้ถ้ายังพักอยู่'))));
+
+  /* 3) อาการ */
+  root.appendChild(h('div', { class: 'card' },
+    field('อาการ (เลือกได้หลายข้อ)', chipGroup(state.settings.symptom, f.symptoms, true, function (s) { f.symptoms = s; }, 'อาการ'), true),
+    field('อาการอื่น / รายละเอียดเพิ่มเติม', h('input', { type: 'text', value: f.symptom_note, maxlength: '500', placeholder: 'เช่น ไข้ 38.5 องศา, ถูกผึ้งต่อยที่แขน', oninput: function (e) { f.symptom_note = e.target.value; } }))));
+
+  /* 4) การดูแล + ยา */
+  var medBox = h('div');
+  var medList = h('datalist', { id: 'medList' }, state.settings.medicine.map(function (m) { return h('option', { value: m }); }));
+  function renderMeds() {
+    clear(medBox);
+    f.medicines.forEach(function (m, i) {
+      medBox.appendChild(h('div', { class: 'med-row' },
+        h('input', { type: 'text', list: 'medList', value: m.medicine_name, placeholder: 'ชื่อยา', 'aria-label': 'ชื่อยา', oninput: function (e) { m.medicine_name = e.target.value; }, onchange: renderAllergyWarn }),
+        h('input', { type: 'number', min: '0', step: '0.5', value: m.quantity, placeholder: 'จำนวน', 'aria-label': 'จำนวน', inputmode: 'decimal', oninput: function (e) { m.quantity = e.target.value; } }),
+        h('input', { type: 'text', value: m.unit, placeholder: 'หน่วย', 'aria-label': 'หน่วย', oninput: function (e) { m.unit = e.target.value; } }),
+        h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'ลบยานี้', text: '×', onclick: function () { f.medicines.splice(i, 1); renderMeds(); } })));
+    });
+    medBox.appendChild(h('button', { type: 'button', class: 'btn small', text: '+ เพิ่มยา', onclick: function () {
+      f.medicines.push({ medicine_name: '', quantity: '1', unit: 'เม็ด' }); renderMeds();
+      var inputs = medBox.querySelectorAll('input[list]'); inputs[inputs.length - 1].focus();
+    } }));
+    renderAllergyWarn();
+  }
+  var allergyWarn = h('div');
+  function renderAllergyWarn() {
+    clear(allergyWarn);
+    var c = allergyConflicts(f.student, f.medicines);
+    if (c.length) allergyWarn.appendChild(h('div', { class: 'alert danger', role: 'alert' }, h('strong', { text: 'ระวัง! นักเรียนแพ้ยา' }), 'ยาที่เลือก: ' + c.join(', ') + ' อาจตรงกับที่แพ้: ' + f.student.drug_allergy));
+  }
+  root.appendChild(h('div', { class: 'card' },
+    field('การดูแล (เลือกได้หลายข้อ)', chipGroup(state.settings.care, f.care_types, true, function (s) {
+      f.care_types = s;
+      if (s.indexOf('ให้ยา') !== -1 && f.medicines.length === 0) { f.medicines.push({ medicine_name: '', quantity: '1', unit: 'เม็ด' }); renderMeds(); }
+    }, 'การดูแล')),
+    h('div', { class: 'field' }, h('div', { class: 'label', text: 'ยาที่ให้' }), medList, medBox, allergyWarn)));
+  renderMeds();
+
+  /* 5) ผลการจัดการ */
+  var outcomeExtra = h('div');
+  function renderOutcomeExtra() {
+    clear(outcomeExtra);
+    if (state.outcomeReferral.indexOf(f.outcome) !== -1) {
+      outcomeExtra.appendChild(field('สถานที่ส่งต่อ', h('input', { type: 'text', value: f.referral_place, placeholder: 'เช่น รพ.สต.บ้านนา, โรงพยาบาลจังหวัด', oninput: function (e) { f.referral_place = e.target.value; } })));
+    }
+    if (state.outcomeNeedsParent.indexOf(f.outcome) !== -1) {
+      if (f.student && f.student.parent_phone) {
+        outcomeExtra.appendChild(h('p', {}, 'เบอร์ผู้ปกครอง: ', h('a', { href: 'tel:' + f.student.parent_phone.replace(/[^\d+]/g, ''), text: f.student.parent_phone })));
+      }
+      outcomeExtra.appendChild(h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: f.parent_notified, onchange: function (e) { f.parent_notified = e.target.checked; } }), 'แจ้งผู้ปกครองแล้ว'));
+    }
+  }
+  renderOutcomeExtra();
+  root.appendChild(h('div', { class: 'card' },
+    field('ผลการจัดการ', chipGroup(state.settings.outcome, f.outcome ? [f.outcome] : [], false, function (s) {
+      f.outcome = s[0] || '';
+      if (f.outcome && !f.time_out) {
+        f.time_out = nowTime();
+        var t = root.querySelectorAll('input[type=time]')[1]; if (t) t.value = f.time_out;
+      }
+      renderOutcomeExtra();
+    }, 'ผลการจัดการ'), false, 'ถ้านักเรียนยังนอนพักอยู่ เว้นไว้ก่อนได้ แล้วค่อยกด "ออกจากห้อง" ที่หน้าวันนี้'),
+    outcomeExtra,
+    field('หมายเหตุ', h('textarea', { maxlength: '500', oninput: function (e) { f.note = e.target.value; } }, f.note || ''))));
+
+  /* ปุ่มบันทึก */
+  var saveBtn = h('button', { type: 'button', class: 'btn primary', text: editing ? 'บันทึกการแก้ไข' : 'บันทึก', onclick: save });
+  root.appendChild(h('div', { class: 'sticky-actions' },
+    h('button', { type: 'button', class: 'btn', text: 'ยกเลิก', onclick: function () { go(editing ? 'history' : 'home'); } }),
+    saveBtn));
+
+  function save() {
+    if (!f.student) { toast('กรุณาเลือกนักเรียน', true); var s = $('studentSearch'); if (s) s.focus(); return; }
+    if (!f.symptoms.length && !f.symptom_note.trim()) { toast('กรุณาเลือกหรือระบุอาการอย่างน้อย 1 อย่าง', true); return; }
+    if (!f.visit_date || !f.time_in) { toast('กรุณาระบุวันที่และเวลาเข้า', true); return; }
+    if (f.time_out && f.time_out < f.time_in) { toast('เวลาออกต้องไม่ก่อนเวลาเข้า', true); return; }
+    var meds = f.medicines.filter(function (m) { return (m.medicine_name || '').trim(); });
+    var conflicts = allergyConflicts(f.student, meds);
+    var check = conflicts.length
+      ? confirmModal('นักเรียนแพ้ยา', studentName(f.student) + ' แพ้: ' + f.student.drug_allergy + '\nยาที่เลือก: ' + conflicts.join(', ') + '\nยืนยันว่าจะบันทึกการให้ยานี้?', 'ยืนยันบันทึก', 'danger')
+      : Promise.resolve(true);
+    check.then(function (ok) {
+      if (!ok) return;
+      saveBtn.disabled = true;
+      api('apiSaveVisit', {
+        visit_id: editing ? editing.visit_id : '',
+        student_id: f.student.student_id, visit_date: f.visit_date, time_in: f.time_in, time_out: f.time_out,
+        symptoms: f.symptoms, symptom_note: f.symptom_note, care_types: f.care_types, medicines: meds,
+        outcome: f.outcome, referral_place: f.referral_place, parent_notified: f.parent_notified, note: f.note
+      }).then(function (v) {
+        toast((editing ? 'บันทึกการแก้ไข ' : 'บันทึก ') + v.student_name + ' แล้ว');
+        go(editing ? 'history' : 'home');
+      }).catch(function (e) { saveBtn.disabled = false; showError(e); });
+    });
+  }
+};
+
+/* ============================================================
+ * หน้า "ประวัติ"
+ * ============================================================ */
+function monthRange(offset) {
+  var d = new Date(); d.setDate(1); d.setMonth(d.getMonth() + (offset || 0));
+  var end = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+  return { from: isoDate(d), to: isoDate(end) };
+}
+function gradeOptions() {
+  var set = {};
+  state.students.forEach(function (s) { if (s.grade) set[s.grade] = true; });
+  return Object.keys(set).sort(function (a, b) { return a.localeCompare(b, 'th', { numeric: true }); });
+}
+
+views.history = function () {
+  var root = clear($('view-history'));
+  var flt = state.historyFilter || Object.assign(monthRange(0), { q: '', grade: '', outcome: '' });
+  state.historyFilter = flt;
+  var listCard = h('div', { class: 'card' });
+  function input(type, key, attrs) {
+    return h('input', Object.assign({ type: type, value: flt[key], onchange: function (e) { flt[key] = e.target.value; load(); } }, attrs || {}));
+  }
+  function select(key, opts, allLabel) {
+    return h('select', { onchange: function (e) { flt[key] = e.target.value; load(); } },
+      h('option', { value: '', text: allLabel }),
+      opts.map(function (o) { return h('option', { value: o, text: o, selected: flt[key] === o }); }));
+  }
+  var qInput = input('search', 'q', { placeholder: 'ชื่อ / เลขประจำตัว / อาการ' });
+  var qTimer;
+  qInput.addEventListener('input', function (e) { clearTimeout(qTimer); qTimer = setTimeout(function () { flt.q = e.target.value; load(); }, 400); });
+  root.appendChild(h('div', { class: 'card' },
+    h('div', { class: 'filters' },
+      field('ตั้งแต่วันที่', input('date', 'from')),
+      field('ถึงวันที่', input('date', 'to')),
+      field('ค้นหา', qInput),
+      field('ชั้น', select('grade', gradeOptions(), 'ทุกชั้น')),
+      field('ผลการจัดการ', select('outcome', state.settings.outcome, 'ทั้งหมด')))));
+  root.appendChild(listCard);
+  function load() {
+    clear(listCard).appendChild(h('div', { class: 'empty', text: 'กำลังค้นหา...' }));
+    api('apiListVisits', flt).then(function (d) {
+      clear(listCard);
+      listCard.appendChild(h('div', { class: 'card-head' }, h('h2', { text: 'พบ ' + d.total + ' รายการ' }),
+        d.total > d.visits.length ? h('span', { class: 'muted small', text: 'แสดง ' + d.visits.length + ' รายการล่าสุด' }) : null));
+      var ul = h('ul', { class: 'list' });
+      if (!d.visits.length) ul.appendChild(h('li', { class: 'empty', text: 'ไม่พบรายการในช่วงที่เลือก' }));
+      d.visits.forEach(function (v) { ul.appendChild(visitItem(v)); });
+      listCard.appendChild(ul);
+    }).catch(function (e) { clear(listCard).appendChild(h('div', { class: 'alert danger', text: e.message })); });
+  }
+  load();
+};
+
+/* ============================================================
+ * หน้า "รายงาน"
+ * ============================================================ */
+function semesterRange(term) {
+  // ปีการศึกษาไทย: ภาค 1 ≈ 16 พ.ค. – 15 ต.ค., ภาค 2 ≈ 1 พ.ย. – 31 มี.ค. (แก้วันที่เองได้)
+  var d = new Date();
+  var y = d.getMonth() >= 4 ? d.getFullYear() : d.getFullYear() - 1; // ปีการศึกษาเริ่ม พ.ค.
+  return term === 1 ? { from: y + '-05-16', to: y + '-10-15' } : { from: y + '-11-01', to: (y + 1) + '-03-31' };
+}
+
+views.report = function () {
+  var root = clear($('view-report'));
+  var range = state.reportRange || monthRange(0);
+  state.reportRange = range;
+  var fromI = h('input', { type: 'date', value: range.from });
+  var toI = h('input', { type: 'date', value: range.to });
+  var out = h('div');
+  function preset(label, r) {
+    return h('button', { type: 'button', class: 'btn small', text: label, onclick: function () { fromI.value = r.from; toI.value = r.to; run(); } });
+  }
+  root.appendChild(h('div', { class: 'card no-print' },
+    h('div', { class: 'btn-row', style: 'margin-bottom:12px' },
+      preset('เดือนนี้', monthRange(0)), preset('เดือนที่แล้ว', monthRange(-1)),
+      preset('ภาคเรียนที่ 1', semesterRange(1)), preset('ภาคเรียนที่ 2', semesterRange(2))),
+    h('div', { class: 'grid-2' }, field('ตั้งแต่วันที่', fromI), field('ถึงวันที่', toI)),
+    h('div', { class: 'btn-row' },
+      h('button', { type: 'button', class: 'btn primary', text: 'ดูรายงาน', onclick: run }),
+      h('button', { type: 'button', class: 'btn', text: 'พิมพ์รายงาน', onclick: function () { window.print(); } }))));
+  root.appendChild(out);
+
+  function run() {
+    range.from = fromI.value; range.to = toI.value;
+    clear(out).appendChild(h('div', { class: 'empty', text: 'กำลังสรุปรายงาน...' }));
+    api('apiReport', range.from, range.to).then(function (d) { renderReport(out, d); })
+      .catch(function (e) { clear(out).appendChild(h('div', { class: 'alert danger', text: e.message })); });
+  }
+  run();
+};
+
+function bars(items, emptyText) {
+  if (!items.length) return h('div', { class: 'empty', text: emptyText || 'ไม่มีข้อมูล' });
+  var max = items[0].count;
+  items.forEach(function (i) { if (i.count > max) max = i.count; });
+  return h('div', { class: 'bars' }, items.map(function (i) {
+    return h('div', { class: 'bar-row' },
+      h('span', { text: i.label }),
+      h('div', { class: 'bar-track', 'aria-hidden': 'true' }, h('div', { class: 'bar-fill', style: 'width:' + Math.max(2, Math.round(i.count / max * 100)) + '%' })),
+      h('span', { class: 'n', text: String(i.count) }));
+  }));
+}
+function table(headers, rows, numCols) {
+  numCols = numCols || [];
+  return h('div', { class: 'table-wrap' }, h('table', {},
+    h('thead', {}, h('tr', {}, headers.map(function (x, i) { return h('th', { class: numCols.indexOf(i) !== -1 ? 'num' : '', text: x }); }))),
+    h('tbody', {}, rows.map(function (r) {
+      return h('tr', {}, r.map(function (c, i) { return h('td', { class: numCols.indexOf(i) !== -1 ? 'num' : '', text: String(c) }); }));
+    }))));
+}
+function section(title, content) { return h('div', { class: 'card' }, h('h3', { style: 'margin-bottom:10px', text: title }), content); }
+
+function renderReport(out, d) {
+  clear(out);
+  out.appendChild(h('div', { class: 'print-only', style: 'text-align:center;margin-bottom:12px' },
+    h('h2', { text: 'รายงานการใช้บริการห้องพยาบาล' }),
+    state.schoolName ? h('div', { style: 'font-weight:600', text: state.schoolName }) : null,
+    h('div', { text: 'ระหว่างวันที่ ' + thDate(d.from, true) + ' ถึง ' + thDate(d.to, true) })));
+  out.appendChild(h('h2', { class: 'no-print', style: 'margin-bottom:12px', text: 'สรุป ' + thDate(d.from) + ' – ' + thDate(d.to) }));
+  out.appendChild(h('div', { class: 'stats' },
+    statCard(d.total, 'ครั้งที่มาใช้บริการ', 'accent'),
+    statCard(d.uniqueStudents, 'จำนวนนักเรียน (คน)'),
+    statCard(d.sentHomeCount, 'ผู้ปกครองรับกลับ'),
+    statCard(d.referredCount, 'ส่งต่อสถานพยาบาล', d.referredCount ? 'danger' : '')));
+  if (!d.total) { out.appendChild(h('div', { class: 'card empty', text: 'ไม่มีการบันทึกในช่วงวันที่นี้' })); return; }
+  out.appendChild(h('div', { class: 'report-grid' },
+    section('อาการที่พบ', bars(d.bySymptom)),
+    section('แยกตามระดับชั้น', bars(d.byGrade)),
+    section('ผลการจัดการ', bars(d.byOutcome)),
+    section('การดูแลที่ให้', bars(d.byCare, 'ไม่ได้ระบุการดูแล'))));
+  out.appendChild(section('ยาที่ใช้', d.medicines.length
+    ? table(['ชื่อยา', 'จำนวนครั้ง', 'ปริมาณรวม'], d.medicines.map(function (m) { return [m.label, m.count, m.quantity ? m.quantity + ' ' + m.unit : '-']; }), [1, 2])
+    : h('div', { class: 'empty', text: 'ไม่มีการให้ยา' })));
+  out.appendChild(section('รายการส่งต่อ / ผู้ปกครองรับกลับ (' + d.referrals.length + ')', d.referrals.length
+    ? table(['วันที่', 'นักเรียน', 'ชั้น', 'อาการ', 'การจัดการ', 'แจ้งผู้ปกครอง'], d.referrals.map(function (r) {
+      return [thDate(r.visit_date) + ' ' + r.time_in, r.student_name, classLabel(r.grade, r.room), r.symptoms,
+        r.outcome + (r.referral_place ? ' (' + r.referral_place + ')' : ''), r.parent_notified ? 'แจ้งแล้ว' : '-'];
+    }))
+    : h('div', { class: 'empty', text: 'ไม่มีการส่งต่อ' })));
+  if (d.frequent.length) {
+    out.appendChild(section('นักเรียนที่มาบ่อย (3 ครั้งขึ้นไป)', table(['นักเรียน', 'ชั้น', 'จำนวนครั้ง'],
+      d.frequent.map(function (p) { return [p.student_name, classLabel(p.grade, p.room), p.count]; }), [2])));
+  }
+  out.appendChild(h('div', { class: 'print-only', style: 'margin-top:40px;text-align:right' },
+    h('p', { text: 'ลงชื่อ ........................................................' }),
+    h('p', { text: '(........................................................)' }),
+    h('p', { text: 'ครูผู้รับผิดชอบงานห้องพยาบาล' }),
+    h('p', { class: 'small muted', text: 'พิมพ์เมื่อ ' + thDate(d.generatedAt.slice(0, 10), true) + ' ' + d.generatedAt.slice(11, 16) + ' น.' })));
+}
+
+/* ============================================================
+ * หน้า "นักเรียน"
+ * ============================================================ */
+views.students = function () {
+  var root = clear($('view-students'));
+  var q = '';
+  var listCard = h('div', { class: 'card' });
+  var search = h('input', { type: 'search', placeholder: 'ค้นหาชื่อ / เลขประจำตัว / ชั้น', oninput: function (e) { q = e.target.value; renderList(); } });
+  root.appendChild(h('div', { class: 'card' },
+    h('div', { class: 'card-head' }, h('h2', { text: 'รายชื่อนักเรียน (' + state.students.length + ' คน)' })),
+    h('div', { class: 'btn-row', style: 'margin-bottom:12px' },
+      h('button', { type: 'button', class: 'btn primary', text: 'นำเข้าจาก Excel', onclick: importModal }),
+      h('button', { type: 'button', class: 'btn', text: '+ เพิ่มนักเรียนทีละคน', onclick: function () { studentModal(null); } })),
+    search));
+  root.appendChild(listCard);
+  function renderList() {
+    clear(listCard);
+    var list = q.trim() ? searchStudents(q, 100) : state.students.slice(0, 100);
+    var ul = h('ul', { class: 'list' });
+    if (!state.students.length) ul.appendChild(h('li', { class: 'empty', text: 'ยังไม่มีรายชื่อนักเรียน กด "นำเข้าจาก Excel" เพื่อเริ่มต้น' }));
+    else if (!list.length) ul.appendChild(h('li', { class: 'empty', text: 'ไม่พบนักเรียน' }));
+    list.forEach(function (s) {
+      ul.appendChild(h('li', { class: 'item clickable', tabindex: '0', role: 'button', onclick: function () { studentModal(s); }, onkeydown: function (e) { if (e.key === 'Enter') studentModal(s); } },
+        h('div', {}, h('div', { class: 'title', text: studentName(s) }), h('div', { class: 'meta', text: s.student_id + ' · ' + classLabel(s.grade, s.room) })),
+        h('div', { class: 'btn-row' },
+          s.drug_allergy ? h('span', { class: 'badge danger', text: 'แพ้ยา' }) : null,
+          s.chronic_disease ? h('span', { class: 'badge warn', text: 'โรคประจำตัว' }) : null)));
+    });
+    listCard.appendChild(ul);
+    var total = q.trim() ? searchStudents(q, 100000).length : state.students.length;
+    if (total > list.length) listCard.appendChild(h('p', { class: 'muted small', text: 'แสดง ' + list.length + ' จาก ' + total + ' คน พิมพ์ค้นหาเพื่อดูเพิ่ม' }));
+  }
+  renderList();
+};
+
+function studentModal(s) {
+  var isNew = !s;
+  var d = Object.assign({ student_id: '', prefix: '', first_name: '', last_name: '', grade: '', room: '', chronic_disease: '', drug_allergy: '', parent_phone: '' }, s || {});
+  function inp(key, attrs) { return h('input', Object.assign({ type: 'text', value: d[key], oninput: function (e) { d[key] = e.target.value; } }, attrs || {})); }
+  var body = h('div', {},
+    field('เลขประจำตัวนักเรียน', inp('student_id', { disabled: !isNew, inputmode: 'numeric' }), true),
+    h('div', { class: 'grid-3' }, field('คำนำหน้า', inp('prefix')), field('ชื่อ', inp('first_name'), true), field('นามสกุล', inp('last_name'))),
+    h('div', { class: 'grid-2' }, field('ชั้น', inp('grade', { placeholder: 'เช่น ม.1' })), field('ห้อง', inp('room'))),
+    field('แพ้ยา', inp('drug_allergy', { placeholder: 'เช่น เพนิซิลลิน, ไอบูโพรเฟน (เว้นว่างถ้าไม่แพ้)' })),
+    field('โรคประจำตัว', inp('chronic_disease', { placeholder: 'เช่น หอบหืด, ลมชัก' })),
+    field('เบอร์โทรผู้ปกครอง', inp('parent_phone', { type: 'tel', inputmode: 'tel' })));
+  openModal(isNew ? 'เพิ่มนักเรียน' : 'ข้อมูลนักเรียน', body, [
+    { label: 'ยกเลิก' },
+    { label: 'บันทึก', kind: 'primary', onClick: function (close) {
+      if (!d.student_id.trim() || !d.first_name.trim()) { toast('กรุณากรอกเลขประจำตัวและชื่อ', true); return false; }
+      api('apiSaveStudent', Object.assign({}, d, { isNew: isNew })).then(function (r) {
+        setStudents(r.students); close(); toast('บันทึกข้อมูลนักเรียนแล้ว'); views.students();
+      }).catch(showError);
+      return false;
+    } }
+  ]);
+}
+
+/* ---------- นำเข้า Excel ---------- */
+var IMPORT_FIELDS = [
+  { key: 'student_id', label: 'เลขประจำตัว', re: /เลขประจำตัว|รหัสนักเรียน|เลขที่ประจำตัว|student.?id|^id$/i, required: true },
+  { key: 'prefix', label: 'คำนำหน้า', re: /คำนำหน้า|prefix|title/i },
+  { key: 'first_name', label: 'ชื่อ', re: /^ชื่อ$|^ชื่อจริง|first.?name|^name$/i, required: true },
+  { key: 'last_name', label: 'นามสกุล', re: /^นามสกุล|^สกุล|last.?name|surname/i },
+  { key: 'full_name', label: 'ชื่อ-นามสกุล (รวมช่องเดียว)', re: /ชื่อ\s*[-–]?\s*(นาม)?สกุล|full.?name/i },
+  { key: 'grade', label: 'ชั้น', re: /ชั้น|ระดับ|grade|class/i },
+  { key: 'room', label: 'ห้อง', re: /ห้อง|room/i },
+  { key: 'drug_allergy', label: 'แพ้ยา', re: /แพ้/i },
+  { key: 'chronic_disease', label: 'โรคประจำตัว', re: /โรค/i },
+  { key: 'parent_phone', label: 'เบอร์ผู้ปกครอง', re: /โทร|phone|มือถือ/i }
+];
+var PREFIXES = ['เด็กชาย', 'เด็กหญิง', 'ด.ช.', 'ด.ญ.', 'นางสาว', 'น.ส.', 'นาย', 'นาง'];
+
+function guessHeaderRow(rows) {
+  var best = 0, bestScore = -1;
+  for (var i = 0; i < Math.min(rows.length, 15); i++) {
+    var score = 0;
+    (rows[i] || []).forEach(function (c) {
+      var t = String(c || '').trim();
+      IMPORT_FIELDS.forEach(function (f) { if (f.re.test(t)) score++; });
+    });
+    if (score > bestScore) { best = i; bestScore = score; }
+  }
+  return best;
+}
+function guessMapping(header) {
+  var map = {};
+  IMPORT_FIELDS.forEach(function (f) {
+    var idx = -1;
+    header.forEach(function (hd, i) {
+      if (idx !== -1) return;
+      var t = String(hd || '').trim();
+      if (!f.re.test(t)) return;
+      if (f.key === 'first_name' && /สกุล/.test(t)) return;           // "ชื่อ-สกุล" ไม่ใช่ชื่ออย่างเดียว
+      if (f.key === 'grade' && /ห้อง/.test(t) && !/ชั้น/.test(t)) return;
+      idx = i;
+    });
+    map[f.key] = idx;
+  });
+  if (map.full_name !== -1 && map.first_name === map.full_name) map.first_name = -1;
+  return map;
+}
+function splitFullName(full) {
+  var s = String(full || '').trim().replace(/\s+/g, ' ');
+  var prefix = '';
+  for (var i = 0; i < PREFIXES.length; i++) {
+    if (s.indexOf(PREFIXES[i]) === 0) { prefix = PREFIXES[i]; s = s.slice(prefix.length).trim(); break; }
+  }
+  var parts = s.split(' ');
+  return { prefix: prefix, first_name: parts.shift() || '', last_name: parts.join(' ') };
+}
+function rowsToStudents(dataRows, map) {
+  function get(r, key) { var i = map[key]; return i === undefined || i < 0 ? '' : String(r[i] === undefined || r[i] === null ? '' : r[i]).trim(); }
+  return dataRows.map(function (r) {
+    var s = {
+      student_id: get(r, 'student_id'), prefix: get(r, 'prefix'), first_name: get(r, 'first_name'), last_name: get(r, 'last_name'),
+      grade: get(r, 'grade'), room: get(r, 'room'), drug_allergy: get(r, 'drug_allergy'),
+      chronic_disease: get(r, 'chronic_disease'), parent_phone: get(r, 'parent_phone')
+    };
+    if (!s.first_name && get(r, 'full_name')) {
+      var n = splitFullName(get(r, 'full_name'));
+      s.first_name = n.first_name; s.last_name = s.last_name || n.last_name; s.prefix = s.prefix || n.prefix;
+    } else if (s.first_name && !s.prefix) {
+      var n2 = splitFullName(s.first_name);
+      if (n2.prefix) { s.prefix = n2.prefix; s.first_name = n2.first_name; if (!s.last_name) s.last_name = n2.last_name; }
+    }
+    // "ม.1/2" ในช่องชั้น → ชั้น ม.1 ห้อง 2
+    var m = s.grade.match(/^(.*?)\s*\/\s*(\d+)$/);
+    if (m && !s.room) { s.grade = m[1]; s.room = m[2]; }
+    return s;
+  }).filter(function (s) { return s.student_id || s.first_name; });
+}
+
+function importModal() {
+  var body = h('div');
+  var parsed = null;   // { rows, headerIdx }
+  var map = null;
+  var deactivate = false;
+  var fileInput = h('input', { type: 'file', accept: '.xlsx,.xls,.csv', onchange: onFile });
+  body.appendChild(h('p', { class: 'muted', text: 'เลือกไฟล์ Excel (.xlsx, .xls) หรือ .csv ที่มีเลขประจำตัวและชื่อนักเรียน ระบบจะจับคอลัมน์ให้อัตโนมัติ ตรวจสอบก่อนกดนำเข้า' }));
+  body.appendChild(field('ไฟล์รายชื่อนักเรียน', fileInput));
+  var mapBox = h('div');
+  body.appendChild(mapBox);
+
+  function onFile() {
+    var file = fileInput.files[0];
+    if (!file) return;
+    if (typeof XLSX === 'undefined') { toast('โหลดตัวอ่าน Excel ไม่สำเร็จ กรุณาตรวจสอบอินเทอร์เน็ตแล้วเปิดหน้าใหม่', true); return; }
+    if (file.size > 5 * 1024 * 1024) { toast('ไฟล์ใหญ่เกิน 5 MB', true); return; }
+    var reader = new FileReader();
+    reader.onload = function (e) {
+      try {
+        var wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
+        var ws = wb.Sheets[wb.SheetNames[0]];
+        var rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '' });
+        var headerIdx = guessHeaderRow(rows);
+        parsed = { rows: rows, headerIdx: headerIdx };
+        map = guessMapping(rows[headerIdx] || []);
+        renderMap();
+      } catch (err) {
+        toast('อ่านไฟล์ไม่ได้ กรุณาตรวจสอบว่าเป็นไฟล์ Excel หรือ CSV', true);
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  }
+  function renderMap() {
+    clear(mapBox);
+    var header = parsed.rows[parsed.headerIdx] || [];
+    var students = rowsToStudents(parsed.rows.slice(parsed.headerIdx + 1), map);
+    var valid = students.filter(function (s) { return s.student_id && s.first_name; });
+    mapBox.appendChild(h('h3', { style: 'margin:8px 0', text: 'จับคู่คอลัมน์' }));
+    mapBox.appendChild(h('div', { class: 'grid-2' }, IMPORT_FIELDS.map(function (f) {
+      return field(f.label, h('select', { onchange: function (e) { map[f.key] = Number(e.target.value); renderMap(); } },
+        h('option', { value: '-1', text: '— ไม่มี —' }),
+        header.map(function (hd, i) { return h('option', { value: String(i), text: String(hd || 'คอลัมน์ ' + (i + 1)), selected: map[f.key] === i }); })), f.required);
+    })));
+    mapBox.appendChild(h('h3', { style: 'margin:8px 0', text: 'ตัวอย่าง 5 คนแรก' }));
+    mapBox.appendChild(table(['เลขประจำตัว', 'ชื่อ', 'ชั้น/ห้อง', 'แพ้ยา'], valid.slice(0, 5).map(function (s) {
+      return [s.student_id, studentName(s), classLabel(s.grade, s.room), s.drug_allergy || '-'];
+    })));
+    mapBox.appendChild(h('p', { class: valid.length ? '' : 'error-text', text: 'พร้อมนำเข้า ' + valid.length + ' คน' + (students.length > valid.length ? ' (ข้าม ' + (students.length - valid.length) + ' แถวที่ไม่มีเลขประจำตัวหรือชื่อ)' : '') }));
+    mapBox.appendChild(h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: deactivate, onchange: function (e) { deactivate = e.target.checked; } }),
+      'ซ่อนนักเรียนที่ไม่อยู่ในไฟล์นี้ (เช่น จบการศึกษา/ย้ายออก) ประวัติเดิมยังอยู่'));
+    parsed.valid = valid;
+  }
+  openModal('นำเข้ารายชื่อนักเรียน', body, [
+    { label: 'ยกเลิก' },
+    { label: 'นำเข้า', kind: 'primary', onClick: function (close) {
+      if (!parsed || !parsed.valid || !parsed.valid.length) { toast('ยังไม่มีรายชื่อที่พร้อมนำเข้า', true); return false; }
+      api('apiImportStudents', parsed.valid, deactivate).then(function (r) {
+        setStudents(r.students); close();
+        toast('นำเข้าแล้ว: เพิ่มใหม่ ' + r.added + ' คน, อัปเดต ' + r.updated + ' คน' + (r.deactivated ? ', ซ่อน ' + r.deactivated + ' คน' : ''));
+        views.students();
+      }).catch(showError);
+      return false;
+    } }
+  ]);
+}
+
+/* ============================================================
+ * เริ่มต้น
+ * ============================================================ */
+document.querySelectorAll('.nav button').forEach(function (b) {
+  b.addEventListener('click', function () { go(b.dataset.view); });
+});
+api('apiBootstrap').then(function (d) {
+  state.settings = d.settings;
+  state.today = d.today;
+  state.schoolName = d.schoolName;
+  state.outcomeNeedsParent = d.outcomeNeedsParent;
+  state.outcomeReferral = d.outcomeReferral;
+  setStudents(d.students);
+  $('topDate').textContent = thDate(d.today, true);
+  $('boot').classList.add('hidden');
+  go(d.students.length ? 'home' : 'students');
+}).catch(function (e) {
+  clear($('boot')).appendChild(h('div', { class: 'alert danger' }, h('strong', { text: 'เปิดระบบไม่สำเร็จ' }), e.message + (e.code ? ' (' + e.code + ')' : '')));
+});
+</script>

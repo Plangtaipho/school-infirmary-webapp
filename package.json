@@ -1,0 +1,13 @@
+{
+  "name": "school-infirmary-webapp",
+  "version": "1.0.0",
+  "private": true,
+  "description": "ระบบบันทึกการเข้าใช้ห้องพยาบาลโรงเรียน (Google Apps Script + Google Sheets)",
+  "scripts": {
+    "test": "node --test tests/*.test.js",
+    "dev": "node dev/server.js"
+  },
+  "devDependencies": {
+    "xlsx": "^0.18.5"
+  }
+}
