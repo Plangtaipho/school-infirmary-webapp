@@ -62,7 +62,7 @@ ${safe(seedSrc)}
 })();
 </script>`;
 
-const banner = `<div style="background:#fff4d6;color:#7a4b00;font:14px/1.4 Sarabun,sans-serif;text-align:center;padding:6px 12px;border-bottom:1px solid #f0d58a">
+const banner = `<style>@media print{.demo-banner{display:none!important}}</style><div class="demo-banner" style="background:#fff4d6;color:#7a4b00;font:14px/1.4 Sarabun,sans-serif;text-align:center;padding:6px 12px;border-bottom:1px solid #f0d58a">
 โหมดสาธิต: ข้อมูลทั้งหมดเป็นข้อมูลสมมติ และจะรีเซ็ตเมื่อรีเฟรชหน้า</div>`;
 
 let html = read(path.join(SRC, 'Index.html'));
