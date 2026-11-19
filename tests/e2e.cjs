@@ -114,6 +114,28 @@ async function newPage(browser, viewport) {
   await page.click('.modal button:has-text("นำเข้า")');
   await page.waitForSelector('.toast:has-text("เพิ่มใหม่ 2 คน")');
   check('นำเข้า CSV สำเร็จ 2 คน', true);
+
+  // ไฟล์แบบโรงเรียนจริง: แยกแท็บละห้อง ("1 ทับ 1"), มีหัวกระดาษ 5 แถว, คำนำหน้าติดชื่อ, เลขประจำตัวขึ้นต้นด้วย 0
+  const XLSX = require('xlsx');
+  const wb = XLSX.utils.book_new();
+  [['1 ทับ 1', ['09001', 'เด็กชายสมมติ  หนึ่ง'], ['09002', 'เด็กหญิงสมมติ สอง']], [' 5 ทับ2', ['09003', 'นายสมมติ  สาม']], ['6ทับ 1', ['09004', 'นางสาวสมมติ สี่']]]
+    .forEach(([name, ...people]) => {
+      const aoa = [['', 'โรงเรียนตัวอย่าง'], ['', 'รายชื่อนักเรียน ภาคเรียนที่ 2/2569'], ['', 'ครูที่ปรึกษา ...'], ['', ''], [], ['', 'ที่', 'เลขประจำตัว', 'ชื่อ - สกุล']]
+        .concat(people.map((x, i) => ['', String(i + 1), x[0], x[1]]));
+      const ws = XLSX.utils.aoa_to_sheet(aoa);
+      people.forEach((x, i) => { ws['C' + (7 + i)] = { t: 's', v: x[0] }; });
+      XLSX.utils.book_append_sheet(wb, ws, name);
+    });
+  const xlsxPath = path.join(OUT, '..', 'import-multi.xlsx');
+  XLSX.writeFile(wb, xlsxPath);
+  await page.click('text=นำเข้าจาก Excel');
+  await page.setInputFiles('.modal input[type=file]', xlsxPath);
+  await page.waitForSelector('.modal :text("พร้อมนำเข้า 4 คน")');
+  check('ไฟล์หลายแท็บ: อ่านชั้น/ห้องจากชื่อแท็บ', await page.locator('.modal td:has-text("ม.5/2")').first().isVisible() && await page.locator('.modal td:has-text("ม.6/1")').first().isVisible());
+  check('ไฟล์หลายแท็บ: แยกคำนำหน้าที่ติดชื่อ + เก็บเลข 0 นำหน้า', await page.locator('.modal td:has-text("เด็กชาย สมมติ หนึ่ง")').isVisible() && await page.locator('.modal td:text-is("09001")').isVisible());
+  await page.click('.modal button:has-text("นำเข้า")');
+  await page.waitForSelector('.toast:has-text("เพิ่มใหม่ 4 คน")');
+  check('นำเข้าไฟล์หลายแท็บสำเร็จ 4 คน', true);
   check('ไม่มี JavaScript error บนมือถือ', errors.length === 0);
   if (errors.length) console.log(errors);
   await ctx.close();

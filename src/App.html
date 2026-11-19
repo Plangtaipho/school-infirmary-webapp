@@ -846,6 +846,41 @@ function rowsToStudents(dataRows, map) {
   }).filter(function (s) { return s.student_id || s.first_name; });
 }
 
+/** หาชั้น/ห้องจากชื่อแท็บ เช่น "1 ทับ 1", "ม.4/2", "5-1" หรือจากหัวกระดาษ "มัธยมศึกษาปีที่ 1/1" */
+function classFromText(t) {
+  t = String(t || '').replace(/\s+/g, ' ').trim();
+  var m = t.match(/(?:ม\.?|มัธยมศึกษาปีที่|ชั้น)?\s*(\d{1,2})\s*(?:ทับ|\/|-|_)\s*(\d{1,2})(?!\d)/);
+  if (!m) return null;
+  var level = /ป\.|ประถม/.test(t) ? 'ป.' : 'ม.';
+  return { grade: level + Number(m[1]), room: String(Number(m[2])) };
+}
+
+/** อ่านทุกแท็บในไฟล์: แต่ละแท็บหาหัวตาราง จับคอลัมน์ และใช้ชื่อแท็บเป็นชั้น/ห้องถ้าไม่มีคอลัมน์ชั้น */
+function parseWorkbook(wb) {
+  var sheets = [];
+  wb.SheetNames.forEach(function (name) {
+    var rows = XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, raw: false, defval: '' });
+    if (!rows.length) return;
+    var headerIdx = guessHeaderRow(rows);
+    var map = guessMapping(rows[headerIdx] || []);
+    var cls = classFromText(name);
+    if (!cls) {
+      for (var i = 0; i < headerIdx && !cls; i++) {
+        var line = rows[i].join(' ');
+        if (/ปีที่|ชั้น/.test(line)) cls = classFromText(line);
+      }
+    }
+    sheets.push({ name: name.trim(), rows: rows, headerIdx: headerIdx, map: map, cls: cls });
+  });
+  return sheets;
+}
+function sheetStudents(sh, map) {
+  return rowsToStudents(sh.rows.slice(sh.headerIdx + 1), map || sh.map).map(function (s) {
+    if (!s.grade && sh.cls) { s.grade = sh.cls.grade; s.room = s.room || sh.cls.room; }
+    return s;
+  });
+}
+
 function importModal() {
   var body = h('div');
   var parsed = null;   // { rows, headerIdx }
@@ -866,11 +901,12 @@ function importModal() {
     reader.onload = function (e) {
       try {
         var wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
-        var ws = wb.Sheets[wb.SheetNames[0]];
-        var rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '' });
-        var headerIdx = guessHeaderRow(rows);
-        parsed = { rows: rows, headerIdx: headerIdx };
-        map = guessMapping(rows[headerIdx] || []);
+        var sheets = parseWorkbook(wb).filter(function (sh) {
+          return sh.map.student_id !== -1 && (sh.map.full_name !== -1 || sh.map.first_name !== -1);
+        });
+        if (!sheets.length) sheets = parseWorkbook(wb).slice(0, 1);
+        parsed = { sheets: sheets, rows: sheets[0].rows, headerIdx: sheets[0].headerIdx };
+        map = sheets[0].map;
         renderMap();
       } catch (err) {
         toast('อ่านไฟล์ไม่ได้ กรุณาตรวจสอบว่าเป็นไฟล์ Excel หรือ CSV', true);
@@ -880,8 +916,9 @@ function importModal() {
   }
   function renderMap() {
     clear(mapBox);
+    if (parsed.sheets.length > 1) return renderMulti();
     var header = parsed.rows[parsed.headerIdx] || [];
-    var students = rowsToStudents(parsed.rows.slice(parsed.headerIdx + 1), map);
+    var students = sheetStudents(parsed.sheets[0], map);
     var valid = students.filter(function (s) { return s.student_id && s.first_name; });
     mapBox.appendChild(h('h3', { style: 'margin:8px 0', text: 'จับคู่คอลัมน์' }));
     mapBox.appendChild(h('div', { class: 'grid-2' }, IMPORT_FIELDS.map(function (f) {
@@ -897,6 +934,27 @@ function importModal() {
     mapBox.appendChild(h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: deactivate, onchange: function (e) { deactivate = e.target.checked; } }),
       'ซ่อนนักเรียนที่ไม่อยู่ในไฟล์นี้ (เช่น จบการศึกษา/ย้ายออก) ประวัติเดิมยังอยู่'));
     parsed.valid = valid;
+  }
+  /** ไฟล์ที่แยกแท็บละห้อง: แสดงสรุปทีละแท็บ */
+  function renderMulti() {
+    var all = [], seen = {}, dup = 0;
+    var summary = parsed.sheets.map(function (sh) {
+      var st = sheetStudents(sh).filter(function (x) { return x.student_id && x.first_name; });
+      st.forEach(function (x) { if (seen[x.student_id]) { dup++; return; } seen[x.student_id] = true; all.push(x); });
+      return [sh.name, sh.cls ? classLabel(sh.cls.grade, sh.cls.room) : 'ไม่พบชั้น/ห้อง', String(st.length)];
+    });
+    var noClass = parsed.sheets.filter(function (sh) { return !sh.cls; }).length;
+    mapBox.appendChild(h('h3', { style: 'margin:8px 0', text: 'พบ ' + parsed.sheets.length + ' แท็บ (อ่านชั้น/ห้องจากชื่อแท็บ)' }));
+    mapBox.appendChild(table(['แท็บ', 'ชั้น/ห้อง', 'จำนวน'], summary));
+    if (noClass) mapBox.appendChild(h('p', { class: 'error-text', text: 'มี ' + noClass + ' แท็บที่อ่านชั้น/ห้องไม่ได้ นักเรียนในแท็บนั้นจะไม่มีชั้น/ห้อง (แก้ชื่อแท็บเป็น เช่น "1 ทับ 1" แล้วเลือกไฟล์ใหม่)' }));
+    mapBox.appendChild(h('h3', { style: 'margin:8px 0', text: 'ตัวอย่าง 5 คนแรก' }));
+    mapBox.appendChild(table(['เลขประจำตัว', 'ชื่อ', 'ชั้น/ห้อง'], all.slice(0, 5).map(function (x) {
+      return [x.student_id, studentName(x), classLabel(x.grade, x.room)];
+    })));
+    mapBox.appendChild(h('p', { class: all.length ? '' : 'error-text', text: 'พร้อมนำเข้า ' + all.length + ' คน' + (dup ? ' (ข้ามเลขประจำตัวซ้ำ ' + dup + ' แถว)' : '') }));
+    mapBox.appendChild(h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: deactivate, onchange: function (e) { deactivate = e.target.checked; } }),
+      'ซ่อนนักเรียนที่ไม่อยู่ในไฟล์นี้ (เช่น จบการศึกษา/ย้ายออก) ประวัติเดิมยังอยู่'));
+    parsed.valid = all;
   }
   openModal('นำเข้ารายชื่อนักเรียน', body, [
     { label: 'ยกเลิก' },
