@@ -162,6 +162,53 @@ function field(label, input, required, hint) {
     input,
     hint ? h('div', { class: 'muted small', text: hint }) : null);
 }
+/**
+ * ช่องเลือกวันที่แบบไทย: แสดง "19 พฤศจิกายน 2569" แต่ค่าที่ส่งเก็บยังเป็น yyyy-MM-dd
+ * แตะแล้วเปิดปฏิทินของเครื่อง (input type=date ที่ซ่อนอยู่)
+ */
+function thDateInput(value, onchange, short) {
+  var shown = h('span', { class: 'th-shown' });
+  var nat = h('input', { type: 'date', class: 'th-native', value: value || '', 'aria-label': 'เลือกวันที่' });
+  var wrap = h('div', { class: 'th-input th-date' }, shown, h('span', { class: 'th-caret', 'aria-hidden': 'true', text: '▾' }), nat);
+  function sync() { shown.textContent = nat.value ? thDate(nat.value, !short) : 'เลือกวันที่'; }
+  nat.addEventListener('change', function () { sync(); if (onchange) onchange(nat.value); });
+  // มือถือ: แตะโดนช่องวันที่ที่ซ่อนอยู่ก็เปิดปฏิทินเอง / คอม: สั่งเปิดปฏิทินให้
+  nat.addEventListener('click', function () { try { nat.showPicker(); } catch (err) { /* เบราว์เซอร์เก่า */ } });
+  Object.defineProperty(wrap, 'value', { get: function () { return nat.value; }, set: function (v) { nat.value = v || ''; sync(); } });
+  sync();
+  return wrap;
+}
+
+/**
+ * ช่องเลือกเวลาแบบไทย 24 ชั่วโมง: [ชั่วโมง] : [นาที] น.  ค่าที่เก็บยังเป็น HH:mm
+ * optional = เว้นว่างได้ (เช่น เวลาออกตอนนักเรียนยังพักอยู่)
+ */
+function thTimeInput(value, onchange, optional) {
+  function opts(n, cur) {
+    var out = optional ? [h('option', { value: '', text: '--' })] : [];
+    for (var i = 0; i < n; i++) { var v = String(i).padStart(2, '0'); out.push(h('option', { value: v, text: v, selected: v === cur })); }
+    return out;
+  }
+  var p = (value || '').split(':');
+  var hh = h('select', { class: 'th-hh', 'aria-label': 'ชั่วโมง' }, opts(24, p[0] || ''));
+  var mm = h('select', { class: 'th-mm', 'aria-label': 'นาที' }, opts(60, p[1] || ''));
+  if (!value && optional) { hh.value = ''; mm.value = ''; }
+  var wrap = h('div', { class: 'th-time' }, hh, h('span', { class: 'th-colon', text: ':' }), mm, h('span', { class: 'muted', text: 'น.' }));
+  function get() { return hh.value && mm.value ? hh.value + ':' + mm.value : ''; }
+  function changed(e) {
+    if (e.target === hh && hh.value && !mm.value) mm.value = '00';
+    if (e.target === hh && !hh.value) mm.value = '';
+    if (e.target === mm && mm.value && !hh.value) hh.value = String(new Date().getHours()).padStart(2, '0');
+    if (onchange) onchange(get());
+  }
+  hh.addEventListener('change', changed);
+  mm.addEventListener('change', changed);
+  Object.defineProperty(wrap, 'value', { get: get, set: function (v) {
+    var q = (v || '').split(':'); hh.value = q[0] || (optional ? '' : '00'); mm.value = q[1] || (optional ? '' : '00');
+  } });
+  return wrap;
+}
+
 function statCard(num, label, kind) {
   return h('div', { class: 'stat ' + (kind || '') }, h('div', { class: 'num', text: String(num) }), h('div', { class: 'label', text: label }));
 }
@@ -419,9 +466,9 @@ views.record = function (opts) {
   /* 2) เวลา */
   root.appendChild(h('div', { class: 'card' },
     h('div', { class: 'grid-3' },
-      field('วันที่', h('input', { type: 'date', value: f.visit_date, onchange: function (e) { f.visit_date = e.target.value; } }), true),
-      field('เวลาเข้า', h('input', { type: 'time', value: f.time_in, onchange: function (e) { f.time_in = e.target.value; } }), true),
-      field('เวลาออก', h('input', { type: 'time', value: f.time_out, onchange: function (e) { f.time_out = e.target.value; } }), false, 'เว้นว่างได้ถ้ายังพักอยู่'))));
+      field('วันที่', thDateInput(f.visit_date, function (v) { f.visit_date = v; }, true), true),
+      field('เวลาเข้า', thTimeInput(f.time_in, function (v) { f.time_in = v; }), true),
+      field('เวลาออก', thTimeInput(f.time_out, function (v) { f.time_out = v; }, true), false, 'เว้นว่างได้ถ้ายังพักอยู่'))));
 
   /* 3) อาการ */
   root.appendChild(h('div', { class: 'card' },
@@ -585,8 +632,8 @@ views.report = function () {
   var root = clear($('view-report'));
   var range = state.reportRange || monthRange(0);
   state.reportRange = range;
-  var fromI = h('input', { type: 'date', value: range.from });
-  var toI = h('input', { type: 'date', value: range.to });
+  var fromI = thDateInput(range.from);
+  var toI = thDateInput(range.to);
   var out = h('div');
   function preset(label, r) {
     return h('button', { type: 'button', class: 'btn small', text: label, onclick: function () { fromI.value = r.from; toI.value = r.to; run(); } });

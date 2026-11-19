@@ -116,6 +116,19 @@
   .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
   .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
   @media (max-width: 520px) { .grid-3 { grid-template-columns: 1fr 1fr; } }
+  /* วันที่/เวลาแบบไทย */
+  .th-input {
+    position: relative; display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%;
+    min-height: 48px; padding: 10px 12px; border: 1px solid #b9c8c5; border-radius: 10px; background: #fff;
+    font: inherit; color: inherit; text-align: left; cursor: pointer;
+  }
+  .th-input:focus-visible { outline: 3px solid var(--brand-soft); border-color: var(--brand); }
+  .th-caret { color: var(--muted, #667); }
+  .th-native { position: absolute; inset: 0; width: 100% !important; height: 100% !important; min-height: 0 !important; opacity: 0; cursor: pointer; border: 0 !important; padding: 0 !important; }
+  .th-input:focus-within { outline: 3px solid var(--brand-soft); border-color: var(--brand); }
+  .th-time { display: flex; align-items: center; gap: 6px; }
+  .th-time select { flex: 1; min-width: 0; padding: 10px 6px; text-align: center; }
+  .th-colon { font-weight: 700; }
   .error-text { color: var(--danger); font-size: .95rem; margin-top: 4px; }
 
   /* ชิปเลือกได้ (แตะง่าย ไม่ต้องพิมพ์) */
