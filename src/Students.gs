@@ -38,6 +38,8 @@ function cleanText_(v, max) {
   return String(v).replace(/\s+/g, ' ').trim().slice(0, max || MAX_TEXT);
 }
 
+function staffKey_(first, last) { return (String(first || '') + '|' + String(last || '')).replace(/\s+/g, ''); }
+
 /** เลขประจำตัวครู/บุคลากรถัดไป: T001, T002, ... */
 function nextStaffId_(existing) {
   var max = 0;
@@ -77,10 +79,19 @@ function apiImportStudents(rows, deactivateMissing) {
       var toAppend = [];
       var updated = 0, added = 0, skipped = 0, deactivated = 0;
       var now = nowText_();
+      // ครู/บุคลากรไม่มีเลขประจำตัว: จับคู่คนเดิมจากชื่อ-นามสกุล ไม่งั้นออกเลข T ใหม่
+      var staffByName = {};
+      existing.forEach(function (s) { if (s.grade === STAFF_GRADE) staffByName[staffKey_(s.first_name, s.last_name)] = s.student_id; });
+      var staffSeq = Number(nextStaffId_(existing).slice(STAFF_ID_PREFIX.length)) - 1;
 
       rows.forEach(function (r) {
         var id = cleanStudentId_(r.student_id);
         var first = cleanText_(r.first_name, 100);
+        if (!id && first && normGrade_(r.grade) === STAFF_GRADE) {
+          var key = staffKey_(first, cleanText_(r.last_name, 100));
+          id = staffByName[key];
+          if (!id) { staffSeq++; id = STAFF_ID_PREFIX + ('00' + staffSeq).slice(-3); staffByName[key] = id; }
+        }
         if (!id || !first || seen[id]) { skipped++; return; }
         seen[id] = true;
         var rec = {
@@ -89,7 +100,7 @@ function apiImportStudents(rows, deactivateMissing) {
           first_name: first,
           last_name: cleanText_(r.last_name, 100),
           grade: normGrade_(r.grade),
-          room: cleanText_(r.room, 10),
+          room: normGrade_(r.grade) === STAFF_GRADE ? '' : cleanText_(r.room, 10),
           chronic_disease: cleanText_(r.chronic_disease),
           drug_allergy: cleanText_(r.drug_allergy),
           parent_phone: cleanText_(r.parent_phone, 50),

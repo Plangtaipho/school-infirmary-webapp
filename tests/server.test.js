@@ -284,3 +284,23 @@ test('ครู/บุคลากร: ได้เลข T001, T002 อัต�
   const rep = g.apiReport('2026-11-01', '2026-11-30').data;
   assert.equal(rep.byGrade.find(x => x.label === 'ครู/บุคลากร').count, 1);
 });
+
+test('นำเข้าครู/บุคลากรจาก Excel: ไม่ต้องมีเลขประจำตัว และนำเข้าซ้ำไม่เพิ่มคนซ้ำ', () => {
+  const g = createGas({ now: NOW });
+  g.setupSheets();
+  g.apiSaveStudent({ isNew: true, prefix: 'นาง', first_name: 'สมศรี', last_name: 'ใจดี', grade: 'ครู/บุคลากร' }); // T001
+  const rows = [
+    { prefix: 'นาง', first_name: 'สมศรี', last_name: 'ใจดี', grade: 'ครู/บุคลากร', drug_allergy: 'แอสไพริน' },
+    { prefix: 'นาย', first_name: 'มานพ', last_name: 'รักงาน', grade: 'ครู/บุคลากร' },
+    { prefix: 'นางสาว', first_name: 'วรรณา', last_name: 'ดีมาก', grade: 'ครู/บุคลากร', room: '3' }
+  ];
+  const r1 = g.apiImportStudents(rows, false).data;
+  assert.equal(r1.added, 2);
+  assert.equal(r1.updated, 1);
+  const staff = r1.students.filter(s => s.grade === 'ครู/บุคลากร').map(s => s.student_id + ':' + s.first_name + ':' + s.room).sort();
+  assert.deepEqual(staff, ['T001:สมศรี:', 'T002:มานพ:', 'T003:วรรณา:']);
+  assert.equal(r1.students.find(s => s.student_id === 'T001').drug_allergy, 'แอสไพริน');
+  const r2 = g.apiImportStudents(rows, false).data;
+  assert.equal(r2.added, 0);
+  assert.equal(r2.updated, 3);
+});

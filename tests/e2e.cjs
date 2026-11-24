@@ -204,6 +204,21 @@ async function newPage(browser, viewport) {
   await page.click('.modal button:has-text("นำเข้า")');
   await page.waitForSelector('.toast:has-text("เพิ่มใหม่ 4 คน")');
   check('นำเข้าไฟล์หลายแท็บสำเร็จ 4 คน', true);
+  // ครู/บุคลากร: ดาวน์โหลดแม่แบบ แล้วนำเข้าจาก Excel (ไม่มีเลขประจำตัว)
+  await page.click('text=นำเข้าครู/บุคลากรจาก Excel');
+  const [tpl] = await Promise.all([page.waitForEvent('download'), page.click('.modal button:has-text("ดาวน์โหลดไฟล์แม่แบบ")')]);
+  const tplPath = path.join(OUT, '..', 'staff-template.xlsx');
+  await tpl.saveAs(tplPath);
+  const twb = XLSX.readFile(tplPath);
+  check('ดาวน์โหลดแม่แบบครู/บุคลากรได้ หัวตารางถูกต้อง', tpl.suggestedFilename().endsWith('.xlsx') && XLSX.utils.sheet_to_json(twb.Sheets[twb.SheetNames[0]], { header: 1 })[0].join(',') === 'คำนำหน้า,ชื่อ,นามสกุล,แพ้ยา,โรคประจำตัว,เบอร์โทร');
+  const sws = XLSX.utils.aoa_to_sheet([['คำนำหน้า', 'ชื่อ', 'นามสกุล', 'แพ้ยา', 'โรคประจำตัว', 'เบอร์โทร'], ['นาย', 'สมพร', 'ทดลองใช้', 'แอสไพริน', '', ''], ['นาง', 'ใหม่ใจ', 'นำเข้าดี', '', 'เบาหวาน', '0812345678'], ['', '', '', '', '', '']]);
+  const swb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(swb, sws, 'ครูและบุคลากร');
+  const staffXlsx = path.join(OUT, '..', 'staff-import.xlsx'); XLSX.writeFile(swb, staffXlsx);
+  await page.setInputFiles('.modal input[type=file]', staffXlsx);
+  await page.waitForSelector('.modal :text("พร้อมนำเข้า 2 คน")');
+  await page.click('.modal button:has-text("นำเข้า")');
+  await page.waitForSelector('.toast:has-text("เพิ่มใหม่ 1 คน, อัปเดต 1 คน")');
+  check('นำเข้าครู/บุคลากรจาก Excel: คนเดิมอัปเดต คนใหม่ได้เลข T', await page.locator('#view-students .item:has-text("ใหม่ใจ"):has-text("ครู/บุคลากร · T00")').isVisible());
   check('ไม่มี JavaScript error บนมือถือ', errors.length === 0);
   if (errors.length) console.log(errors);
   await ctx.close();

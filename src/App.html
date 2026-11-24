@@ -918,9 +918,10 @@ views.students = function () {
   root.appendChild(h('div', { class: 'card' },
     h('div', { class: 'card-head' }, h('h2', { text: 'รายชื่อนักเรียนและบุคลากร (' + state.students.length + ' คน)' })),
     h('div', { class: 'btn-row', style: 'margin-bottom:12px' },
-      h('button', { type: 'button', class: 'btn primary', text: 'นำเข้าจาก Excel', onclick: importModal }),
+      h('button', { type: 'button', class: 'btn primary', text: 'นำเข้าจาก Excel', onclick: function () { importModal(false); } }),
       h('button', { type: 'button', class: 'btn', text: '+ เพิ่มนักเรียนทีละคน', onclick: function () { studentModal(null); } }),
-      h('button', { type: 'button', class: 'btn', text: '+ เพิ่มครู/บุคลากร', onclick: function () { studentModal(null, true); } })),
+      h('button', { type: 'button', class: 'btn', text: '+ เพิ่มครู/บุคลากร', onclick: function () { studentModal(null, true); } }),
+      h('button', { type: 'button', class: 'btn', text: 'นำเข้าครู/บุคลากรจาก Excel', onclick: function () { importModal(true); } })),
     search));
   root.appendChild(listCard);
   function renderList() {
@@ -1097,14 +1098,33 @@ function sheetStudents(sh, map) {
   });
 }
 
-function importModal() {
+var STAFF_TEMPLATE_HEADER = ['คำนำหน้า', 'ชื่อ', 'นามสกุล', 'แพ้ยา', 'โรคประจำตัว', 'เบอร์โทร'];
+function downloadStaffTemplate() {
+  if (typeof XLSX === 'undefined') { toast('โหลดตัวสร้าง Excel ไม่สำเร็จ กรุณาตรวจสอบอินเทอร์เน็ต', true); return; }
+  var ws = XLSX.utils.aoa_to_sheet([STAFF_TEMPLATE_HEADER]);
+  ws['!cols'] = [{ wch: 10 }, { wch: 18 }, { wch: 18 }, { wch: 20 }, { wch: 22 }, { wch: 14 }];
+  var wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'ครูและบุคลากร');
+  // สร้างลิงก์ดาวน์โหลดเอง (ชื่อไฟล์ภาษาอังกฤษ: ชื่อภาษาไทยบางเครื่องกลายเป็น "download" ไม่มีนามสกุล)
+  var blob = new Blob([XLSX.write(wb, { bookType: 'xlsx', type: 'array' })], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  var a = h('a', { href: URL.createObjectURL(blob), download: 'staff-template.xlsx', style: 'display:none' });
+  document.body.appendChild(a); a.click();
+  setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+}
+
+function importModal(staffMode) {
   var body = h('div');
   var parsed = null;   // { rows, headerIdx }
   var map = null;
   var deactivate = false;
   var fileInput = h('input', { type: 'file', accept: '.xlsx,.xls,.csv', onchange: onFile });
-  body.appendChild(h('p', { class: 'muted', text: 'เลือกไฟล์ Excel (.xlsx, .xls) หรือ .csv ที่มีเลขประจำตัวและชื่อนักเรียน ระบบจะจับคอลัมน์ให้อัตโนมัติ ตรวจสอบก่อนกดนำเข้า' }));
-  body.appendChild(field('ไฟล์รายชื่อนักเรียน', fileInput));
+  if (staffMode) {
+    body.appendChild(h('p', { class: 'muted', text: 'ไฟล์ Excel มีคอลัมน์: ' + STAFF_TEMPLATE_HEADER.join(', ') + ' (ใส่แค่ชื่อก็ได้) ไม่ต้องมีเลขประจำตัว ระบบตั้งให้เอง ชื่อที่มีอยู่แล้วจะอัปเดต ไม่เพิ่มซ้ำ' }));
+    body.appendChild(h('button', { type: 'button', class: 'btn small', style: 'margin-bottom:12px', text: 'ดาวน์โหลดไฟล์แม่แบบ (.xlsx)', onclick: downloadStaffTemplate }));
+  } else {
+    body.appendChild(h('p', { class: 'muted', text: 'เลือกไฟล์ Excel (.xlsx, .xls) หรือ .csv ที่มีเลขประจำตัวและชื่อนักเรียน ระบบจะจับคอลัมน์ให้อัตโนมัติ ตรวจสอบก่อนกดนำเข้า' }));
+  }
+  body.appendChild(field(staffMode ? 'ไฟล์รายชื่อครู/บุคลากร' : 'ไฟล์รายชื่อนักเรียน', fileInput));
   var mapBox = h('div');
   body.appendChild(mapBox);
 
@@ -1117,6 +1137,16 @@ function importModal() {
     reader.onload = function (e) {
       try {
         var wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
+        if (staffMode) {
+          var all = parseWorkbook(wb);
+          var pick = all.filter(function (sh) { return /ครู|บุคลากร/.test(sh.name); })[0] ||
+            all.filter(function (sh) { return sh.map.full_name !== -1 || sh.map.first_name !== -1; })[0] || all[0];
+          if (!pick) throw new Error('empty');
+          parsed = { sheets: [pick], rows: pick.rows, headerIdx: pick.headerIdx };
+          map = pick.map;
+          renderMap();
+          return;
+        }
         var sheets = parseWorkbook(wb).filter(function (sh) {
           return sh.map.student_id !== -1 && (sh.map.full_name !== -1 || sh.map.first_name !== -1);
         });
@@ -1134,15 +1164,23 @@ function importModal() {
     clear(mapBox);
     if (parsed.sheets.length > 1) return renderMulti();
     var header = parsed.rows[parsed.headerIdx] || [];
-    var students = sheetStudents(parsed.sheets[0], map);
-    var valid = students.filter(function (s) { return s.student_id && s.first_name; });
+    var students = staffMode
+      ? rowsToStudents(parsed.rows.slice(parsed.headerIdx + 1), map).map(function (s) { s.student_id = ''; s.grade = STAFF_GRADE; s.room = ''; return s; })
+      : sheetStudents(parsed.sheets[0], map);
+    var valid = students.filter(function (s) { return (staffMode || s.student_id) && s.first_name; });
     mapBox.appendChild(h('h3', { style: 'margin:8px 0', text: 'จับคู่คอลัมน์' }));
-    mapBox.appendChild(h('div', { class: 'grid-2' }, IMPORT_FIELDS.map(function (f) {
+    mapBox.appendChild(h('div', { class: 'grid-2' }, IMPORT_FIELDS.filter(function (f) { return !staffMode || ['student_id', 'grade', 'room'].indexOf(f.key) === -1; }).map(function (f) {
       return field(f.label, h('select', { onchange: function (e) { map[f.key] = Number(e.target.value); renderMap(); } },
         h('option', { value: '-1', text: '— ไม่มี —' }),
         header.map(function (hd, i) { return h('option', { value: String(i), text: String(hd || 'คอลัมน์ ' + (i + 1)), selected: map[f.key] === i }); })), f.required);
     })));
     mapBox.appendChild(h('h3', { style: 'margin:8px 0', text: 'ตัวอย่าง 5 คนแรก' }));
+    if (staffMode) {
+      mapBox.appendChild(table(['ชื่อ', 'แพ้ยา', 'โรคประจำตัว'], valid.slice(0, 5).map(function (s) { return [studentName(s), s.drug_allergy || '-', s.chronic_disease || '-']; })));
+      mapBox.appendChild(h('p', { class: valid.length ? '' : 'error-text', text: 'พร้อมนำเข้า ' + valid.length + ' คน' + (students.length > valid.length ? ' (ข้าม ' + (students.length - valid.length) + ' แถวที่ไม่มีชื่อ)' : '') }));
+      parsed.valid = valid;
+      return;
+    }
     mapBox.appendChild(table(['เลขประจำตัว', 'ชื่อ', 'ชั้น/ห้อง', 'แพ้ยา'], valid.slice(0, 5).map(function (s) {
       return [s.student_id, studentName(s), classLabel(s.grade, s.room), s.drug_allergy || '-'];
     })));
@@ -1172,11 +1210,11 @@ function importModal() {
       'ซ่อนนักเรียนที่ไม่อยู่ในไฟล์นี้ (เช่น จบการศึกษา/ย้ายออก) ประวัติเดิมยังอยู่'));
     parsed.valid = all;
   }
-  openModal('นำเข้ารายชื่อนักเรียน', body, [
+  openModal(staffMode ? 'นำเข้ารายชื่อครู/บุคลากร' : 'นำเข้ารายชื่อนักเรียน', body, [
     { label: 'ยกเลิก' },
     { label: 'นำเข้า', kind: 'primary', onClick: function (close) {
       if (!parsed || !parsed.valid || !parsed.valid.length) { toast('ยังไม่มีรายชื่อที่พร้อมนำเข้า', true); return false; }
-      api('apiImportStudents', parsed.valid, deactivate).then(function (r) {
+      api('apiImportStudents', parsed.valid, staffMode ? false : deactivate).then(function (r) {
         setStudents(r.students); close();
         toast('นำเข้าแล้ว: เพิ่มใหม่ ' + r.added + ' คน, อัปเดต ' + r.updated + ' คน' + (r.deactivated ? ', ซ่อน ' + r.deactivated + ' คน' : ''));
         views.students();
