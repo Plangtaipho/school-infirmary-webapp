@@ -261,3 +261,26 @@ test('ชั้นที่พิมพ์เป็นตัวเลขถู�
   const s = g.readTable_(g.SHEETS.STUDENTS).find(r => r.student_id === '20001');
   assert.equal(s.grade, 'ม.5');
 });
+
+test('ครู/บุคลากร: ได้เลข T001, T002 อัตโนมัติ และไม่ถูกปิดเมื่อนำเข้ารายชื่อนักเรียนใหม่', () => {
+  const g = createGas({ now: NOW });
+  g.setupSheets();
+  g.apiImportStudents([{ student_id: '10001', first_name: 'สมชาย', grade: 'ม.1', room: '1' }], false);
+  const a = g.apiSaveStudent({ isNew: true, prefix: 'นาง', first_name: 'สมศรี', last_name: 'ใจดี', grade: 'ครู/บุคลากร', room: '2' });
+  assert.equal(a.ok, true);
+  assert.equal(a.data.student.student_id, 'T001');
+  assert.equal(a.data.student.room, '');
+  const b = g.apiSaveStudent({ isNew: true, first_name: 'ประเสริฐ', grade: 'บุคลากร' });
+  assert.equal(b.data.student.student_id, 'T002');
+  assert.equal(b.data.student.grade, 'ครู/บุคลากร');
+  // นักเรียนยังต้องมีเลขประจำตัว
+  assert.equal(g.apiSaveStudent({ isNew: true, first_name: 'ไม่มีเลข', grade: 'ม.2' }).ok, false);
+  // นำเข้าไฟล์นักเรียนแบบปิดคนที่ไม่อยู่ในไฟล์ ครูต้องยังอยู่
+  const r = g.apiImportStudents([{ student_id: '10002', first_name: 'ใหม่', grade: 'ม.1', room: '1' }], true);
+  const ids = r.data.students.map(s => s.student_id).sort();
+  assert.deepEqual(ids, ['10002', 'T001', 'T002']);
+  // บันทึกการมาห้องพยาบาลของครูได้ และรายงานแยกกลุ่ม ครู/บุคลากร
+  assert.equal(g.apiSaveVisit({ student_id: 'T001', visit_date: '2026-11-19', time_in: '10:00', temperature: '37.0', symptoms: ['ปวดศีรษะ'] }).ok, true);
+  const rep = g.apiReport('2026-11-01', '2026-11-30').data;
+  assert.equal(rep.byGrade.find(x => x.label === 'ครู/บุคลากร').count, 1);
+});

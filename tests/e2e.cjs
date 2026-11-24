@@ -43,7 +43,7 @@ async function newPage(browser, viewport) {
 
   // บันทึกนักเรียนที่แพ้พาราเซตามอล (36002 ตามข้อมูลตัวอย่าง)
   await page.click('text=+ บันทึกนักเรียนที่มาใหม่');
-  check('หน้าบันทึกแสดงปุ่มเลือกห้อง ม.1/1 ถึง ม.6/2 (12 ห้อง)', (await page.locator('.class-chip').count()) === 12);
+  check('หน้าบันทึกแสดงปุ่มเลือกห้อง ม.1/1 ถึง ม.6/2 (12 ห้อง) + ครู/บุคลากร', (await page.locator('.class-chip').count()) === 13 && await page.locator('.class-chip >> nth=12').textContent() === 'ครู/บุคลากร');
   check('วันที่แสดงเป็นภาษาไทย พ.ศ.', /^\d{1,2} [ก-๙.]+ 25\d\d$/.test((await page.textContent('#view-record .th-date .th-shown')).trim()));
   check('เวลาเลือกเป็นชั่วโมง:นาที 24 ชม. (เวลาเข้า + เวลาออก)', (await page.locator('#view-record .th-hh').count()) === 2 && (await page.inputValue('#view-record .th-hh >> nth=1')) === '');
   await page.selectOption('#view-record .th-hh >> nth=0', '13');
@@ -118,6 +118,27 @@ async function newPage(browser, viewport) {
   await page.waitForSelector('#view-home:not(.hidden) .stats');
   check('ลงเวลาออกจากหน้าประวัติแล้วเหลือคนพัก 1 คน', (await page.locator('#view-home button:has-text("ออกจากห้อง")').count()) === 1);
 
+  // ครู/บุคลากร: เพิ่มชื่อใหม่จากหน้าบันทึก แล้วบันทึกการมาได้ทันที
+  await page.click('.nav button[data-view=record]');
+  await page.click('.class-chip:has-text("ครู/บุคลากร")');
+  check('ครู/บุคลากร: แสดงรายชื่อ 2 คนจากข้อมูลตัวอย่าง', (await page.locator('.name-btn').count()) === 2);
+  await page.click('button:has-text("+ เพิ่มชื่อครู/บุคลากร")');
+  await page.fill('.modal .grid-3 input >> nth=0', 'นางสาว');
+  await page.fill('.modal .grid-3 input >> nth=1', 'มาลี');
+  await page.fill('.modal .grid-3 input >> nth=2', 'ทดสอบครู');
+  await page.click('.modal button:has-text("บันทึก")');
+  await page.waitForSelector('#view-record .student-card:has-text("มาลี")');
+  check('ครู/บุคลากร: เพิ่มชื่อแล้วเลือกให้ทันที เลข T003', await page.locator('#view-record .student-card:has-text("ครู/บุคลากร · T003")').isVisible());
+  await page.fill('#tempInput', '36.6');
+  await page.click('.chip:has-text("ปวดศีรษะ")');
+  await page.click('.sticky-actions .btn.primary');
+  await page.waitForSelector('#view-home:not(.hidden) .stats');
+  check('ครู/บุคลากร: บันทึกการมาห้องพยาบาลได้', await page.locator('#view-home .item:has-text("มาลี")').first().isVisible());
+  await page.locator('#view-home .item:has-text("มาลี") button:has-text("ออกจากห้อง")').click();
+  await page.click('.modal .chip:has-text("กลับเข้าเรียน")');
+  await page.click('.modal button:has-text("บันทึกเวลาออก")');
+  await page.waitForSelector('.toast:has-text("บันทึกเวลาออกแล้ว")');
+
   // ไม่เลือกนักเรียนแล้วกดบันทึก → แจ้งเตือน
   await page.click('.nav button[data-view=record]');
   await page.click('.sticky-actions .btn.primary');
@@ -146,6 +167,7 @@ async function newPage(browser, viewport) {
   check('รายงาน: ไม่มีปุ่มพิมพ์รายงาน', (await page.locator('#view-report button:has-text("พิมพ์")').count()) === 0);
   check('รายงาน: หัวกราฟบอกหน่วย "คน" และ "ร้อยละ"', (await page.locator('#view-report .bar-head:has-text("คน")').count()) >= 4 && (await page.locator('#view-report .bar-head:has-text("ร้อยละ")').count()) >= 2);
   check('รายงาน: ตัวเลขสรุปมีหน่วย', (await page.locator('#view-report .stat .unit').count()) === 4);
+  check('รายงาน: แยกกลุ่มครู/บุคลากร', await page.locator('#view-report .bar-row:has-text("ครู/บุคลากร")').isVisible());
   check('รายงาน: มีหัวข้ออุณหภูมิร่างกาย', await page.locator('#view-report h3:has-text("อุณหภูมิ")').isVisible());
 
   // นักเรียน: นำเข้า CSV

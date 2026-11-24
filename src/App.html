@@ -62,6 +62,9 @@ function nowTime() {
 }
 function studentName(s) { return [s.prefix, s.first_name, s.last_name].filter(Boolean).join(' '); }
 function classLabel(grade, room) { return grade ? grade + (room ? '/' + room : '') : ''; }
+var STAFF_GRADE = 'ครู/บุคลากร';
+function isStaff(s) { return !!s && s.grade === STAFF_GRADE; }
+function phoneLabel(s) { return isStaff(s) ? 'เบอร์ติดต่อ' : 'เบอร์ผู้ปกครอง'; }
 
 /* ---------- เรียกเซิร์ฟเวอร์ ---------- */
 var pending = 0;
@@ -283,12 +286,13 @@ function listClasses() {
     var c = classLabel(s.grade, s.room) || 'ไม่ระบุชั้น';
     if (!seen[c]) { seen[c] = true; out.push(c); }
   });
+  if (!seen[STAFF_GRADE]) out.push(STAFF_GRADE); // ปุ่มครู/บุคลากรแสดงเสมอ เพิ่มชื่อได้จากตรงนั้น
   return out;
 }
 
 function setStudents(list) {
   state.students = list.slice().sort(function (a, b) {
-    return (a.grade + a.room).localeCompare(b.grade + b.room, 'th', { numeric: true }) ||
+    return (isStaff(a) - isStaff(b)) || (a.grade + a.room).localeCompare(b.grade + b.room, 'th', { numeric: true }) ||
       a.student_id.localeCompare(b.student_id, 'th', { numeric: true });
   });
   state.studentById = {};
@@ -367,7 +371,7 @@ function checkoutModal(v) {
     }
     if (state.outcomeNeedsParent.indexOf(outcome) !== -1) {
       if (student && student.parent_phone) {
-        extra.appendChild(h('p', {}, 'เบอร์ผู้ปกครอง: ', h('a', { href: 'tel:' + student.parent_phone.replace(/[^\d+]/g, ''), text: student.parent_phone })));
+        extra.appendChild(h('p', {}, phoneLabel(student) + ': ', h('a', { href: 'tel:' + student.parent_phone.replace(/[^\d+]/g, ''), text: student.parent_phone })));
       }
     }
   }
@@ -394,7 +398,7 @@ function visitDetailModal(v) {
   var rows = [
     ['วันที่', thDate(v.visit_date, true)],
     ['เวลา', v.time_in + ' น. – ' + (v.time_out ? v.time_out + ' น.' : 'ยังอยู่ในห้องพยาบาล')],
-    ['นักเรียน', v.student_name + ' (' + v.student_id + ')'],
+    [v.grade === STAFF_GRADE ? 'ครู/บุคลากร' : 'นักเรียน', v.student_name + ' (' + v.student_id + ')'],
     ['ชั้น', classLabel(v.grade, v.room)],
     ['อุณหภูมิ', v.temperature ? v.temperature + ' °C' + (tempLevel(v.temperature) === 'high' ? ' (ไข้สูง)' : tempLevel(v.temperature) === 'fever' ? ' (มีไข้)' : '') : 'ไม่ได้วัด'],
     ['อาการ', symptomText(v) || '-'],
@@ -501,14 +505,13 @@ views.record = function (opts) {
       studentBox.appendChild(h('div', { class: 'student-card' },
         h('div', {},
           h('div', { class: 'name', text: studentName(f.student) }),
-          h('div', { class: 'muted', text: 'เลขประจำตัว ' + f.student.student_id + ' · ชั้น ' + classLabel(f.student.grade, f.student.room) })),
+          h('div', { class: 'muted', text: isStaff(f.student) ? 'ครู/บุคลากร · ' + f.student.student_id : 'เลขประจำตัว ' + f.student.student_id + ' · ชั้น ' + classLabel(f.student.grade, f.student.room) })),
         editing ? null : h('button', { type: 'button', class: 'btn small', text: 'เปลี่ยน', onclick: function () { f.student = null; renderStudent(); renderOutcomeExtra(); } })));
       append(studentBox, healthAlerts(f.student));
       return;
     }
     if (!state.students.length) {
-      studentBox.appendChild(h('p', { class: 'muted', text: 'ยังไม่มีรายชื่อนักเรียน กรุณานำเข้าที่เมนู "นักเรียน"' }));
-      return;
+      studentBox.appendChild(h('p', { class: 'muted', text: 'ยังไม่มีรายชื่อนักเรียน กรุณานำเข้าที่เมนู "นักเรียน" (ครู/บุคลากร เพิ่มได้จากปุ่มด้านล่าง)' }));
     }
     var classes = listClasses();
     var picked = state.pickClass && classes.indexOf(state.pickClass) !== -1 ? state.pickClass : '';
@@ -517,9 +520,11 @@ views.record = function (opts) {
     function renderNames() {
       Array.prototype.forEach.call(classBtns.children, function (b) { b.setAttribute('aria-pressed', String(b.dataset.cls === picked)); });
       clear(nameBox);
-      if (!picked) { nameBox.appendChild(h('p', { class: 'muted small', text: 'แตะเลือกห้องก่อน แล้วรายชื่อนักเรียนจะแสดงด้านล่าง' })); return; }
+      if (!picked) { nameBox.appendChild(h('p', { class: 'muted small', text: 'แตะเลือกห้องก่อน แล้วรายชื่อจะแสดงด้านล่าง (ครูหรือบุคลากร แตะ "' + STAFF_GRADE + '")' })); return; }
+      var staffPick = picked === STAFF_GRADE;
       var inClass = state.students.filter(function (s) { return classLabel(s.grade, s.room) === picked; });
-      nameBox.appendChild(h('div', { class: 'label', style: 'margin-top:14px', text: 'ชั้น ' + picked + ' (' + inClass.length + ' คน) แตะชื่อนักเรียน' }));
+      nameBox.appendChild(h('div', { class: 'label', style: 'margin-top:14px', text: (staffPick ? picked : 'ชั้น ' + picked) + ' (' + inClass.length + ' คน) แตะชื่อ' }));
+      if (staffPick && !inClass.length) nameBox.appendChild(h('p', { class: 'muted small', text: 'ยังไม่มีรายชื่อครู/บุคลากร กดปุ่มด้านล่างเพื่อเพิ่ม' }));
       nameBox.appendChild(h('div', { class: 'name-list' }, inClass.map(function (s) {
         return h('button', { type: 'button', class: 'name-btn', onclick: function () { f.student = s; renderStudent(); renderOutcomeExtra(); } },
           h('span', { class: 'nm', text: studentName(s) }),
@@ -527,6 +532,8 @@ views.record = function (opts) {
             s.drug_allergy ? h('span', { class: 'badge danger', text: 'แพ้ยา' }) : null,
             s.chronic_disease ? h('span', { class: 'badge warn', text: 'โรคประจำตัว' }) : null));
       })));
+      if (staffPick) nameBox.appendChild(h('button', { type: 'button', class: 'btn small', style: 'margin-top:10px', text: '+ เพิ่มชื่อครู/บุคลากร',
+        onclick: function () { studentModal(null, true, function (s) { f.student = s; renderStudent(); renderOutcomeExtra(); }); } }));
     }
     classes.forEach(function (c) {
       classBtns.appendChild(h('button', { type: 'button', class: 'chip class-chip', 'data-cls': c, 'aria-pressed': 'false', text: c,
@@ -537,7 +544,7 @@ views.record = function (opts) {
     renderNames();
   }
   renderStudent();
-  root.appendChild(h('div', { class: 'card' }, h('div', { class: 'field', style: 'margin:0' }, h('div', { class: 'label' }, 'นักเรียน', h('span', { class: 'req', text: ' *' })), studentBox)));
+  root.appendChild(h('div', { class: 'card' }, h('div', { class: 'field', style: 'margin:0' }, h('div', { class: 'label' }, 'นักเรียน / ครู / บุคลากร', h('span', { class: 'req', text: ' *' })), studentBox)));
 
   /* 2) เวลา */
   root.appendChild(h('div', { class: 'card' },
@@ -638,7 +645,7 @@ views.record = function (opts) {
     }
     if (state.outcomeNeedsParent.indexOf(f.outcome) !== -1) {
       if (f.student && f.student.parent_phone) {
-        outcomeExtra.appendChild(h('p', {}, 'เบอร์ผู้ปกครอง: ', h('a', { href: 'tel:' + f.student.parent_phone.replace(/[^\d+]/g, ''), text: f.student.parent_phone })));
+        outcomeExtra.appendChild(h('p', {}, phoneLabel(f.student) + ': ', h('a', { href: 'tel:' + f.student.parent_phone.replace(/[^\d+]/g, ''), text: f.student.parent_phone })));
       }
     }
   }
@@ -664,7 +671,7 @@ views.record = function (opts) {
   function save() {
     if (f.temperature) { var tn = Number(normTemp(f.temperature)); if (!isFinite(tn) || tn < 30 || tn > 45) { toast('อุณหภูมิไม่ถูกต้อง ใส่ระหว่าง 30–45 องศา', true); tempInput.focus(); return; } }
     if (f.student && !editing && !f.temperature) { toast('กรุณาใส่อุณหภูมิร่างกาย', true); tempInput.focus(); tempInput.scrollIntoView({ block: 'center', behavior: 'smooth' }); return; }
-    if (!f.student) { toast('กรุณาเลือกนักเรียน', true); var cg = document.querySelector('#view-record .class-grid'); if (cg) cg.scrollIntoView({ block: 'center', behavior: 'smooth' }); return; }
+    if (!f.student) { toast('กรุณาเลือกนักเรียน (หรือครู/บุคลากร)', true); var cg = document.querySelector('#view-record .class-grid'); if (cg) cg.scrollIntoView({ block: 'center', behavior: 'smooth' }); return; }
     if (!f.symptoms.length && !f.symptom_note.trim()) { toast('กรุณาเลือกหรือระบุอาการอย่างน้อย 1 อย่าง', true); return; }
     if (!f.visit_date || !f.time_in) { toast('กรุณาระบุวันที่และเวลาเข้า', true); return; }
     if (f.time_out && f.time_out < f.time_in) { toast('เวลาออกต้องไม่ก่อนเวลาเข้า', true); return; }
@@ -866,7 +873,7 @@ function renderReport(out, d) {
   out.appendChild(h('h2', { class: 'no-print', style: 'margin-bottom:12px', text: 'สรุป ' + thDate(d.from) + ' – ' + thDate(d.to) }));
   out.appendChild(h('div', { class: 'stats' },
     statCard(d.total, 'มาใช้บริการ', 'accent', 'ครั้ง'),
-    statCard(d.uniqueStudents, 'นักเรียนที่มา (ไม่นับซ้ำ)', '', 'คน'),
+    statCard(d.uniqueStudents, 'ผู้มาใช้บริการ (ไม่นับซ้ำ)', '', 'คน'),
     statCard(d.sentHomeCount, 'ผู้ปกครองรับกลับบ้าน', '', 'ครั้ง'),
     statCard(d.referredCount, 'ส่งต่อสถานพยาบาล', d.referredCount ? 'danger' : '', 'ครั้ง')));
   if (!d.total) { out.appendChild(h('div', { class: 'card empty', text: 'ไม่มีการบันทึกในช่วงวันที่นี้' })); return; }
@@ -876,7 +883,7 @@ function renderReport(out, d) {
     section('อาการที่พบ', bars(d.bySymptom, null, 'อาการ'), '1 คนเลือกได้หลายอาการ ผลรวมจึงอาจมากกว่าจำนวนที่มา'),
     section('อุณหภูมิร่างกาย', bars(d.byTemperature || [], 'ไม่มีข้อมูลอุณหภูมิ', 'ช่วงอุณหภูมิ (°C)', d.total))));
   out.appendChild(row(
-    section('แยกตามระดับชั้น', bars(d.byGrade, null, 'ระดับชั้น', d.total)),
+    section('แยกตามระดับชั้น / บุคลากร', bars(d.byGrade, null, 'กลุ่ม', d.total)),
     section('ผลการจัดการ', bars(d.byOutcome, null, 'ผลการจัดการ', d.total))));
   out.appendChild(row(
     section('การดูแลที่ให้', bars(d.byCare, 'ไม่ได้ระบุการดูแล', 'การดูแล'), '1 คนอาจได้รับการดูแลหลายอย่าง'),
@@ -884,13 +891,13 @@ function renderReport(out, d) {
       ? table(['ชื่อยา', 'ให้ (ครั้ง)', 'รวม'], d.medicines.map(function (m) { return [m.label, m.count, m.quantity ? fmtNum(m.quantity) + ' ' + (m.unit || '') : '-']; }), [1, 2])
       : h('div', { class: 'empty', text: 'ไม่มีการให้ยา' }))));
   out.appendChild(section('รายการส่งต่อ / ผู้ปกครองรับกลับ (' + d.referrals.length + ')', d.referrals.length
-    ? table(['วันที่ เวลา', 'นักเรียน', 'ชั้น', 'อุณหภูมิ (°C)', 'อาการ', 'การจัดการ'], d.referrals.map(function (r) {
+    ? table(['วันที่ เวลา', 'ชื่อ', 'ชั้น', 'อุณหภูมิ (°C)', 'อาการ', 'การจัดการ'], d.referrals.map(function (r) {
       return [thDate(r.visit_date) + ' ' + r.time_in, r.student_name, classLabel(r.grade, r.room), r.temperature || '-', r.symptoms,
         r.outcome + (r.referral_place ? ' (' + r.referral_place + ')' : '')];
     }), [3])
     : h('div', { class: 'empty', text: 'ไม่มีการส่งต่อ' })));
   if (d.frequent.length) {
-    out.appendChild(section('นักเรียนที่มาบ่อย (3 ครั้งขึ้นไป)', table(['นักเรียน', 'ชั้น', 'มา (ครั้ง)'],
+    out.appendChild(section('ผู้ที่มาบ่อย (3 ครั้งขึ้นไป)', table(['ชื่อ', 'ชั้น', 'มา (ครั้ง)'],
       d.frequent.map(function (p) { return [p.student_name, classLabel(p.grade, p.room), p.count]; }), [2])));
   }
   out.appendChild(h('div', { class: 'print-only sign-block', style: 'margin-top:32px;text-align:right' },
@@ -909,10 +916,11 @@ views.students = function () {
   var listCard = h('div', { class: 'card' });
   var search = h('input', { type: 'search', placeholder: 'ค้นหาชื่อ / เลขประจำตัว / ชั้น', oninput: function (e) { q = e.target.value; renderList(); } });
   root.appendChild(h('div', { class: 'card' },
-    h('div', { class: 'card-head' }, h('h2', { text: 'รายชื่อนักเรียน (' + state.students.length + ' คน)' })),
+    h('div', { class: 'card-head' }, h('h2', { text: 'รายชื่อนักเรียนและบุคลากร (' + state.students.length + ' คน)' })),
     h('div', { class: 'btn-row', style: 'margin-bottom:12px' },
       h('button', { type: 'button', class: 'btn primary', text: 'นำเข้าจาก Excel', onclick: importModal }),
-      h('button', { type: 'button', class: 'btn', text: '+ เพิ่มนักเรียนทีละคน', onclick: function () { studentModal(null); } })),
+      h('button', { type: 'button', class: 'btn', text: '+ เพิ่มนักเรียนทีละคน', onclick: function () { studentModal(null); } }),
+      h('button', { type: 'button', class: 'btn', text: '+ เพิ่มครู/บุคลากร', onclick: function () { studentModal(null, true); } })),
     search));
   root.appendChild(listCard);
   function renderList() {
@@ -923,7 +931,7 @@ views.students = function () {
     else if (!list.length) ul.appendChild(h('li', { class: 'empty', text: 'ไม่พบนักเรียน' }));
     list.forEach(function (s) {
       ul.appendChild(h('li', { class: 'item clickable', tabindex: '0', role: 'button', onclick: function () { studentModal(s); }, onkeydown: function (e) { if (e.key === 'Enter') studentModal(s); } },
-        h('div', {}, h('div', { class: 'title', text: studentName(s) }), h('div', { class: 'meta', text: s.student_id + ' · ' + classLabel(s.grade, s.room) })),
+        h('div', {}, h('div', { class: 'title', text: studentName(s) }), h('div', { class: 'meta', text: isStaff(s) ? 'ครู/บุคลากร · ' + s.student_id : s.student_id + ' · ' + classLabel(s.grade, s.room) })),
         h('div', { class: 'btn-row' },
           s.drug_allergy ? h('span', { class: 'badge danger', text: 'แพ้ยา' }) : null,
           s.chronic_disease ? h('span', { class: 'badge warn', text: 'โรคประจำตัว' }) : null)));
@@ -935,10 +943,31 @@ views.students = function () {
   renderList();
 };
 
-function studentModal(s) {
+function studentModal(s, staffMode, onSaved) {
   var isNew = !s;
-  var d = Object.assign({ student_id: '', prefix: '', first_name: '', last_name: '', grade: '', room: '', chronic_disease: '', drug_allergy: '', parent_phone: '' }, s || {});
+  var staff = staffMode || isStaff(s);
+  var d = Object.assign({ student_id: '', prefix: '', first_name: '', last_name: '', grade: staff ? STAFF_GRADE : '', room: '', chronic_disease: '', drug_allergy: '', parent_phone: '' }, s || {});
   function inp(key, attrs) { return h('input', Object.assign({ type: 'text', value: d[key], oninput: function (e) { d[key] = e.target.value; } }, attrs || {})); }
+  if (staff) {
+    var staffBody = h('div', {},
+      isNew ? h('p', { class: 'muted small', text: 'ระบบตั้งเลขประจำตัวให้อัตโนมัติ (T001, T002, ...)' }) : field('เลขประจำตัว', inp('student_id', { disabled: true })),
+      h('div', { class: 'grid-3' }, field('คำนำหน้า', inp('prefix', { placeholder: 'เช่น นาง' })), field('ชื่อ', inp('first_name'), true), field('นามสกุล', inp('last_name'))),
+      field('แพ้ยา', inp('drug_allergy', { placeholder: 'เช่น เพนิซิลลิน (เว้นว่างถ้าไม่แพ้)' })),
+      field('โรคประจำตัว', inp('chronic_disease', { placeholder: 'เช่น ความดันสูง, เบาหวาน' })),
+      field('เบอร์โทรติดต่อ', inp('parent_phone', { type: 'tel', inputmode: 'tel' })));
+    openModal(isNew ? 'เพิ่มครู/บุคลากร' : 'ข้อมูลครู/บุคลากร', staffBody, [
+      { label: 'ยกเลิก' },
+      { label: 'บันทึก', kind: 'primary', onClick: function (close) {
+        if (!d.first_name.trim()) { toast('กรุณากรอกชื่อ', true); return false; }
+        api('apiSaveStudent', Object.assign({}, d, { grade: STAFF_GRADE, room: '', isNew: isNew })).then(function (r) {
+          setStudents(r.students); close(); toast('บันทึกข้อมูลแล้ว');
+          if (onSaved) onSaved(state.studentById[r.student.student_id] || r.student); else views.students();
+        }).catch(showError);
+        return false;
+      } }
+    ]);
+    return;
+  }
   var body = h('div', {},
     field('เลขประจำตัวนักเรียน', inp('student_id', { disabled: !isNew, inputmode: 'numeric' }), true),
     h('div', { class: 'grid-3' }, field('คำนำหน้า', inp('prefix')), field('ชื่อ', inp('first_name'), true), field('นามสกุล', inp('last_name'))),
@@ -1170,6 +1199,7 @@ api('apiBootstrap').then(function (d) {
   state.tempHighFever = d.tempHighFever || 39;
   state.today = d.today;
   state.schoolName = d.schoolName;
+  STAFF_GRADE = d.staffGrade || STAFF_GRADE;
   state.outcomeNeedsParent = d.outcomeNeedsParent;
   state.outcomeReferral = d.outcomeReferral;
   setStudents(d.students);

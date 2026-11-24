@@ -64,6 +64,10 @@ var LIST_TYPES = ['symptom', 'care', 'medicine', 'unit', 'outcome'];
 
 var DEFAULT_SCHOOL_NAME = 'โรงเรียนหนองสวรรค์วิทยาคาร';
 
+/** ครูและบุคลากรเก็บในแท็บ Students ร่วมกับนักเรียน โดยใช้ "ชั้น" ค่านี้ และเลขประจำตัวขึ้นต้นด้วย T (T001, T002, ...) */
+var STAFF_GRADE = 'ครู/บุคลากร';
+var STAFF_ID_PREFIX = 'T';
+
 // อุณหภูมิ: ช่วงที่รับได้ และเกณฑ์มีไข้ (องศาเซลเซียส)
 var TEMP_MIN = 30;
 var TEMP_MAX = 45;

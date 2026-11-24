@@ -118,6 +118,7 @@ function apiBootstrap() {
       tempFever: TEMP_FEVER,
       tempHighFever: TEMP_HIGH_FEVER,
       schoolName: getSchoolName_(),
+      staffGrade: STAFF_GRADE,
       students: listStudents_(),
       outcomeNeedsParent: OUTCOME_NEEDS_PARENT,
       outcomeReferral: OUTCOME_REFERRAL

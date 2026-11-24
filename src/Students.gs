@@ -28,6 +28,7 @@ function publicStudent_(s) {
 /** "1", "ม1", "ม. 1", "มัธยมศึกษาปีที่ 1" → "ม.1" (ให้รายงานแยกชั้นได้ถูกต้อง) */
 function normGrade_(v) {
   var s = cleanText_(v, 30);
+  if (/^(ครู|บุคลากร|ครู\s*\/\s*บุคลากร|ครูและบุคลากร)$/.test(s)) return STAFF_GRADE;
   var m = s.match(/^(?:ม\.?|มัธยมศึกษาปีที่|ม\.ศ\.?)?\s*(\d{1,2})$/);
   return m ? 'ม.' + Number(m[1]) : s;
 }
@@ -35,6 +36,16 @@ function normGrade_(v) {
 function cleanText_(v, max) {
   if (v === undefined || v === null) return '';
   return String(v).replace(/\s+/g, ' ').trim().slice(0, max || MAX_TEXT);
+}
+
+/** เลขประจำตัวครู/บุคลากรถัดไป: T001, T002, ... */
+function nextStaffId_(existing) {
+  var max = 0;
+  existing.forEach(function (s) {
+    var m = String(s.student_id).match(new RegExp('^' + STAFF_ID_PREFIX + '(\\d+)$'));
+    if (m) max = Math.max(max, Number(m[1]));
+  });
+  return STAFF_ID_PREFIX + ('00' + (max + 1)).slice(-3);
 }
 
 function cleanStudentId_(v) {
@@ -101,7 +112,8 @@ function apiImportStudents(rows, deactivateMissing) {
 
       if (deactivateMissing) {
         existing.forEach(function (s) {
-          if (!seen[s.student_id] && s.active !== 'FALSE') {
+          // ครู/บุคลากรไม่อยู่ในไฟล์รายชื่อนักเรียน จึงไม่ปิดการใช้งาน
+          if (!seen[s.student_id] && s.active !== 'FALSE' && s.grade !== STAFF_GRADE) {
             s.active = 'FALSE';
             s.updated_at = now;
             updateRow_(SHEETS.STUDENTS, s._row, s);
@@ -122,10 +134,12 @@ function apiSaveStudent(input) {
   return handle_('saveStudent', function () {
     var id = cleanStudentId_(input && input.student_id);
     var first = cleanText_(input && input.first_name, 100);
-    if (!id) throw appError_('ERR-STUDENT-ID', 'กรุณากรอกเลขประจำตัวนักเรียน');
-    if (!first) throw appError_('ERR-STUDENT-NAME', 'กรุณากรอกชื่อนักเรียน');
+    var isStaff = normGrade_(input && input.grade) === STAFF_GRADE;
+    if (!id && !isStaff) throw appError_('ERR-STUDENT-ID', 'กรุณากรอกเลขประจำตัวนักเรียน');
+    if (!first) throw appError_('ERR-STUDENT-NAME', 'กรุณากรอกชื่อ');
     return withLock_(function () {
       var existing = readTable_(SHEETS.STUDENTS);
+      if (!id) id = nextStaffId_(existing);
       var old = existing.filter(function (s) { return s.student_id === id; })[0];
       var rec = {
         student_id: id,
@@ -133,7 +147,7 @@ function apiSaveStudent(input) {
         first_name: first,
         last_name: cleanText_(input.last_name, 100),
         grade: normGrade_(input.grade),
-        room: cleanText_(input.room, 10),
+        room: isStaff ? '' : cleanText_(input.room, 10),
         chronic_disease: cleanText_(input.chronic_disease),
         drug_allergy: cleanText_(input.drug_allergy),
         parent_phone: cleanText_(input.parent_phone, 50),

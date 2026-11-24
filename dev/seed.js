@@ -57,6 +57,12 @@ function seed(gas) {
       });
     }
   }
+  // ครู/บุคลากร (ชื่อสมมติ)
+  gas.apiImportStudents([
+    { student_id: 'T001', prefix: 'นาง', first_name: 'สุดารัตน์', last_name: 'ตัวอย่าง', grade: 'ครู/บุคลากร', chronic_disease: 'ความดันโลหิตสูง' },
+    { student_id: 'T002', prefix: 'นาย', first_name: 'สมพร', last_name: 'ทดลองใช้', grade: 'ครู/บุคลากร' }
+  ], false);
+  if (d > 2) gas.apiSaveVisit({ student_id: 'T001', visit_date: `${y}-${String(m).padStart(2, '0')}-02`, time_in: '13:10', time_out: '13:40', temperature: '36.9', symptoms: ['เวียนศีรษะ'], care_types: ['ให้นอนพัก', 'วัดไข้/วัดความดัน'], outcome: 'กลับเข้าเรียน' });
   // วันนี้: 2 คนยังพักอยู่ 1 คนกลับเข้าเรียนแล้ว
   gas.apiSaveVisit({ student_id: '36005', visit_date: today, time_in: '08:20', time_out: '09:00', temperature: '36.8', symptoms: ['ปวดท้อง'], care_types: ['ให้ยา'], medicines: [{ medicine_name: 'ยาธาตุน้ำขาว', quantity: 1, unit: 'ช้อนชา' }], outcome: 'กลับเข้าเรียน' });
   gas.apiSaveVisit({ student_id: '36012', visit_date: today, time_in: '09:05', temperature: '38.2', symptoms: ['ไข้', 'ปวดศีรษะ'], care_types: ['ให้นอนพัก', 'เช็ดตัวลดไข้'] });
